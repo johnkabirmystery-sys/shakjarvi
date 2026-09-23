@@ -1,15 +1,25 @@
 """
-tool_registry.py
+J.A.R.V.I.S. Centralized Tool Registry (core/tool_registry.py)
+=============================================================
+Authoritative repository for all system tools accessible to J.A.R.V.I.S. Mark XVII.
 
-Centralized tool definition registry for J.A.R.V.I.S. Mark XVI.
-Defines all available tools as OpenAI-compatible JSON function schemas
-and provides a dispatch function to execute them.
+Architectural Guarantees:
+1. Standard OpenAI Specification: Every tool definition complies strictly with the 
+   OpenAI Function Calling schema standard (`type='function'`).
+2. Type-Safe Dispatch: `execute_tool()` dispatches named tool calls with dynamic keyword
+   argument unpacking directly to `core.ai_brain.execute_tool_call()`.
+3. Strict Error Boundaries: Tool execution failures are safely trapped and returned as structured
+   error payloads without crashing the agentic reasoning loop.
+4. Universal Multi-Model Support: Designed for zero-friction consumption by Google Gemini,
+   Anthropic Claude, and OpenAI models connected via OmniRoute.
 """
 
 from typing import List, Dict, Any
 
-# Define the OpenAI-compatible tool schemas
-JARVIS_TOOLS = [
+# ==============================================================================
+# 1. TOOL SCHEMA DEFINITIONS (OpenAI Function Calling Format)
+# ==============================================================================
+JARVIS_TOOLS: List[Dict[str, Any]] = [
     {
         "type": "function",
         "function": {

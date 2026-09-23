@@ -1,3 +1,16 @@
+"""
+J.A.R.V.I.S. Cognitive Neural Core (core/ai_brain.py)
+=====================================================
+Central intelligence engine for J.A.R.V.I.S. Mark XVII.
+
+Core Responsibilities:
+1. Intent Classification: 9-category deterministic router with ambiguity detection.
+2. Prompt Context Synthesis: Injects situational telemetry, user facts, RAG context, and spatial data.
+3. Streaming & Multimodal Processing: Bridges real-time OmniRoute token streams to Stark HUD.
+4. Agentic ReAct Tool Loop: Multi-turn autonomous tool execution loop with structured function calling.
+5. Local Offline Fallback: Instant, zero-latency local command handler when offline.
+"""
+
 import os
 import re
 import json
