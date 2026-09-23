@@ -19,6 +19,8 @@
    - **Code Delivery:** Wrap all code in standard markdown fences. J.A.R.V.I.S. automatically saves generated code to Desktop in `Jarvis_Created_Files/`.
    - **Immediate Intent First:** Answer the user's specific request directly without unsolicited historical project repetition.
 
+> 📖 **Full Multi-Agent Engineering Protocol:** See [AGENTS_CONTRIBUTING.md](file:///d:/Antigravity%20Project/FULL%20ON%20SHAKILS%20ASSISTANT/AGENTS_CONTRIBUTING.md) for branch conventions, commit standards, tool creation guides, and mandatory test benchmarks.
+
 ---
 
 ## 🏗️ System Architecture & Data Flow
