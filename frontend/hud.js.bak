@@ -1,0 +1,3352 @@
+/**
+ * J.A.R.V.I.S. — Shakil's Assistant HUD Core Logic
+ * Real-time Telemetry, Arc Reactor Visualizer, Neural Voice & Speech Interaction
+ */
+
+// Global State
+const state = {
+  status: "idle", // idle, listening, thinking, executing, speaking
+  isListening: false,
+  continuousVoice: true,
+  wakeWordEnabled: false,
+  conversationActiveUntil: 0,
+  soundFxEnabled: true,
+  volume: 100,
+  activeAudio: null,
+  chatHistory: [],
+  voices: [],
+  speechLang: localStorage.getItem("jarvis_speech_lang") || "en-IN",
+  audioMode: localStorage.getItem("jarvis_audio_mode") || "browser",
+  selectedModel: localStorage.getItem("jarvis_selected_model") || "agy/gemini-3.7-flash-low",
+  currentWorkspace: localStorage.getItem("jarvis_workspace") || "personal",
+  audioUnlocked: false,
+  jarvisIsSpeaking: false,
+  speakingTurnTimer: null,
+  currentThoughts: []
+};
+
+// Web Audio API Context
+let audioCtx = null;
+let analyser = null;
+let audioSource = null;
+const audioFreqData = new Uint8Array(64);
+
+function initAudioContext() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 128;
+  }
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume();
+  }
+}
+
+// Active Audio Unlock Shield (primes both Web Audio & HTML5 Audio without restriction)
+function unlockAllAudioEngines() {
+  if (state.audioUnlocked) return;
+  try {
+    initAudioContext();
+    if (audioCtx && audioCtx.state === "suspended") {
+      audioCtx.resume();
+    }
+    // Prime HTML5 Audio element with a 0.01s silent wav
+    const silent = new Audio("data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA");
+    silent.play().then(() => {
+      state.audioUnlocked = true;
+      hideAudioUnlockBanner();
+    }).catch(() => {
+      // Will be unlocked on next gesture
+    });
+  } catch(e) {
+    console.warn("Audio unlock attempt:", e);
+  }
+}
+
+function hideAudioUnlockBanner() {
+  const banner = document.getElementById("audioUnlockBanner");
+  if (banner && banner.style.display !== "none") {
+    banner.style.borderColor = "#38ef7d";
+    banner.style.color = "#38ef7d";
+    banner.innerHTML = `<span class="audio-banner-icon">🟢</span> <span id="audioBannerText">AUDIO ENGINE UNLOCKED · DIRECT NEURAL VOICE LINK ENGAGED</span>`;
+    setTimeout(() => {
+      banner.style.transition = "opacity 0.6s ease, transform 0.6s ease";
+      banner.style.opacity = "0";
+      banner.style.transform = "translateY(-10px)";
+      setTimeout(() => { banner.style.display = "none"; }, 600);
+    }, 1400);
+  }
+}
+
+// ----------------------------------------------------
+// STRICT DUPLEX TURN-TAKING LOCK & AUTO-MIC ENGINE
+// ----------------------------------------------------
+function lockMicForJarvisTurn(reason = "COMMUNICATING") {
+  state.jarvisIsSpeaking = true;
+  if (state.speakingTurnTimer) {
+    clearTimeout(state.speakingTurnTimer);
+    state.speakingTurnTimer = null;
+  }
+  if (speechSilenceTimer) {
+    clearTimeout(speechSilenceTimer);
+    speechSilenceTimer = null;
+  }
+  currentRecordedText = "";
+
+  // Abort speech recognition immediately to kill buffer and prevent feedback
+  if (recognition) {
+    try {
+      recognition.abort();
+    } catch(e) {}
+  }
+  state.isListening = false;
+
+  const micBtn = document.getElementById("btnVoiceToggle");
+  if (micBtn) {
+    micBtn.classList.remove("active");
+    micBtn.classList.add("speaking-locked");
+  }
+  updateMicBadge("MUTED (JARVIS SPEAKING)", "#ff3344");
+
+  const cmdInput = document.getElementById("cmdInput");
+  const btnSend = document.getElementById("btnSend");
+  if (cmdInput) {
+    cmdInput.disabled = true;
+    cmdInput.placeholder = "Jarvis speaking... microphone will auto-arm when complete.";
+  }
+  if (btnSend) btnSend.disabled = true;
+}
+
+function unlockMicAfterJarvisTurn() {
+  if (state.speakingTurnTimer) {
+    clearTimeout(state.speakingTurnTimer);
+    state.speakingTurnTimer = null;
+  }
+
+  // Grace buffer (350ms) to allow speaker acoustic reverberation to settle
+  state.speakingTurnTimer = setTimeout(() => {
+    state.jarvisIsSpeaking = false;
+    currentPlayingAudio = null;
+
+    const micBtn = document.getElementById("btnVoiceToggle");
+    if (micBtn) {
+      micBtn.classList.remove("speaking-locked");
+    }
+
+    const cmdInput = document.getElementById("cmdInput");
+    const btnSend = document.getElementById("btnSend");
+    if (cmdInput) {
+      cmdInput.disabled = false;
+      cmdInput.placeholder = "Enter directive or speak freely ('Jarvis, check my emails')...";
+    }
+    if (btnSend) btnSend.disabled = false;
+
+    // Auto-engage microphone immediately!
+    if (state.continuousVoice) {
+      setAssistantStatus("listening", "LISTENING FOR SIR SHAKIL");
+      startVoiceListener();
+      updateMicBadge("LIVE", "#00ffff");
+      playSound("ack"); // Subtle futuristic chime: "Your turn to speak, Sir"
+    } else {
+      setAssistantStatus("idle", "AWAITING DIRECTIVE");
+      updateMicBadge("STANDBY", "#888888");
+    }
+  }, 350);
+}
+
+// Synthetic Sci-Fi Sound FX Engine
+function playSound(type) {
+  if (!state.soundFxEnabled) return;
+  try {
+    initAudioContext();
+    const now = audioCtx.currentTime;
+    
+    if (type === "blip") {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(1400, now);
+      osc.frequency.exponentialRampToValueAtTime(800, now + 0.05);
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.05);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.05);
+    } else if (type === "ack") {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.setValueAtTime(1760, now + 0.06);
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.14);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.14);
+    } else if (type === "boot") {
+      [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+        gain.gain.setValueAtTime(0.06, now + idx * 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.8 + idx * 0.08);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now + idx * 0.08);
+        osc.stop(now + 0.85 + idx * 0.08);
+      });
+    } else if (type === "alert") {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.linearRampToValueAtTime(880, now + 0.15);
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.2);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.2);
+    }
+  } catch (e) {
+    console.error("Audio FX error:", e);
+  }
+}
+
+// ----------------------------------------------------
+// CANVAS ARC REACTOR RENDERER
+// ----------------------------------------------------
+const canvas = document.getElementById("arcCanvas");
+const ctx = canvas.getContext("2d");
+let rotationRing1 = 0;
+let rotationRing2 = 0;
+let rotationRing3 = 0;
+
+function drawArcReactor() {
+  const w = canvas.width;
+  const h = canvas.height;
+  const cx = w / 2;
+  const cy = h / 2;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Read audio frequency if active
+  let avgFreq = 0;
+  if (analyser && (state.status === "speaking" || state.status === "listening")) {
+    try {
+      analyser.getByteFrequencyData(audioFreqData);
+      let sum = 0;
+      for (let i = 0; i < 32; i++) sum += audioFreqData[i];
+      avgFreq = sum / 32 / 255; // 0 to 1
+    } catch(e){}
+  }
+
+  // Dynamic synthetic audio pulse if speaking via PC hardware speaker
+  if (state.status === "speaking" && avgFreq < 0.05) {
+    const t = Date.now() / 150;
+    avgFreq = 0.35 + Math.sin(t) * 0.18 + Math.cos(t * 1.6) * 0.12;
+    for (let i = 0; i < 32; i++) {
+      audioFreqData[i] = Math.floor(avgFreq * 255 * (0.6 + 0.4 * Math.sin(t + i * 0.3)));
+    }
+  }
+
+  // Color scheme based on state
+  let primaryColor = "#00f0ff";
+  let glowColor = "rgba(0, 240, 255, 0.4)";
+  let speedMult = 1;
+
+  if (state.status === "listening") {
+    primaryColor = "#00ffff";
+    glowColor = "rgba(0, 255, 255, 0.7)";
+    speedMult = 1.6;
+  } else if (state.status === "thinking") {
+    primaryColor = "#ffaa00";
+    glowColor = "rgba(255, 170, 0, 0.7)";
+    speedMult = 2.8;
+  } else if (state.status === "executing") {
+    primaryColor = "#ff3344";
+    glowColor = "rgba(255, 51, 68, 0.7)";
+    speedMult = 3.5;
+  } else if (state.status === "speaking") {
+    primaryColor = "#38ef7d";
+    glowColor = "rgba(56, 239, 125, 0.7)";
+    speedMult = 1.2;
+  }
+
+  rotationRing1 += 0.008 * speedMult;
+  rotationRing2 -= 0.012 * speedMult;
+  rotationRing3 += 0.005 * speedMult;
+
+  // Outer ambient glow
+  const grad = ctx.createRadialGradient(cx, cy, 60, cx, cy, 260);
+  grad.addColorStop(0, glowColor);
+  grad.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, w, h);
+
+  // 1. Outermost Ring with Segment Ticks
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotationRing1);
+  ctx.strokeStyle = "rgba(0, 240, 255, 0.25)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, 230, 0, Math.PI * 2);
+  ctx.stroke();
+
+  const numTicks = 60;
+  for (let i = 0; i < numTicks; i++) {
+    const angle = (i * Math.PI * 2) / numTicks;
+    const len = i % 5 === 0 ? 14 : 6;
+    ctx.strokeStyle = i % 5 === 0 ? primaryColor : "rgba(0, 240, 255, 0.4)";
+    ctx.lineWidth = i % 5 === 0 ? 3 : 1;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * (230 - len), Math.sin(angle) * (230 - len));
+    ctx.lineTo(Math.cos(angle) * 230, Math.sin(angle) * 230);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // 2. Middle Counter-Rotating Gear Ring
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotationRing2);
+  ctx.strokeStyle = primaryColor;
+  ctx.lineWidth = 3;
+  ctx.shadowColor = primaryColor;
+  ctx.shadowBlur = 15;
+
+  const numArcs = 8;
+  for (let i = 0; i < numArcs; i++) {
+    const start = (i * Math.PI * 2) / numArcs;
+    const end = start + (Math.PI / numArcs) * 0.7;
+    ctx.beginPath();
+    ctx.arc(0, 0, 185, start, end);
+    ctx.stroke();
+
+    // Node dots
+    const dotAngle = start + (Math.PI / numArcs) * 0.35;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(Math.cos(dotAngle) * 185, Math.sin(dotAngle) * 185, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // 3. Audio Frequency Waveform Radiators (during speaking/listening)
+  ctx.save();
+  ctx.translate(cx, cy);
+  const numBars = 32;
+  for (let i = 0; i < numBars; i++) {
+    const angle = (i * Math.PI * 2) / numBars;
+    const barVal = (audioFreqData[i % 32] / 255) || (avgFreq * 0.8);
+    const barLen = 140 + barVal * 40;
+    
+    ctx.strokeStyle = primaryColor;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * 140, Math.sin(angle) * 140);
+    ctx.lineTo(Math.cos(angle) * barLen, Math.sin(angle) * barLen);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // 4. Inner Ring with Hexagon / Triangles
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rotationRing3);
+  ctx.strokeStyle = "rgba(0, 240, 255, 0.5)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, 120, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 3 Triangular core struts
+  for (let i = 0; i < 3; i++) {
+    const angle = (i * Math.PI * 2) / 3;
+    ctx.strokeStyle = primaryColor;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * 60, Math.sin(angle) * 60);
+    ctx.lineTo(Math.cos(angle) * 120, Math.sin(angle) * 120);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // 5. Central Pulsing Core
+  const pulse = Math.sin(Date.now() / 300) * 4 + (avgFreq * 16);
+  const coreRadius = Math.max(20, 48 + pulse);
+  
+  const coreGrad = ctx.createRadialGradient(cx, cy, 5, cx, cy, coreRadius);
+  coreGrad.addColorStop(0, "#ffffff");
+  coreGrad.addColorStop(0.4, primaryColor);
+  coreGrad.addColorStop(1, "rgba(0, 240, 255, 0)");
+
+  ctx.fillStyle = coreGrad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, coreRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  requestAnimationFrame(drawArcReactor);
+}
+
+// ----------------------------------------------------
+// TELEMETRY WEBSOCKET (/ws/telemetry)
+// ----------------------------------------------------
+let wsTelemetry = null;
+
+function connectTelemetry() {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const wsUrl = `${protocol}//${window.location.host}/ws/telemetry`;
+  wsTelemetry = new WebSocket(wsUrl);
+
+  wsTelemetry.onopen = () => {
+    document.getElementById("badgeWs").innerHTML = `<span class="dot"></span> LINK: SYNCED`;
+    document.getElementById("badgeWs").style.color = "var(--hud-cyan)";
+  };
+
+  wsTelemetry.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      updateTelemetryUI(data);
+    } catch (e) {
+      console.error("Telemetry parse error:", e);
+    }
+  };
+
+  wsTelemetry.onclose = () => {
+    document.getElementById("badgeWs").innerHTML = `<span class="dot" style="background:#ff3344"></span> LINK: OFFLINE`;
+    document.getElementById("badgeWs").style.color = "#ff3344";
+    setTimeout(connectTelemetry, 3000);
+  };
+}
+
+function renderOperationsPipeline(orch) {
+  if (!orch) return;
+  const deckEl = document.getElementById("orchestratorPipelineDeck");
+  const opsList = document.getElementById("opsFullTaskList");
+
+  let activeHtml = "";
+  let fullOpsHtml = "";
+
+  if (orch.active_tasks && orch.active_tasks.length > 0) {
+    orch.active_tasks.forEach(t => {
+      const stateColor = t.state === "needs_approval" ? "#ffaa00" : (t.state === "running" ? "#00e5ff" : "#38ef7d");
+      const stateBadge = t.state === "needs_approval" ? "NEEDS APPROVAL" : (t.state || "RUNNING").toUpperCase();
+
+      activeHtml += `<div style="margin-bottom:6px; border-left:2px solid ${stateColor}; padding-left:6px;">
+        <div style="font-weight:700; color:${stateColor};">[${escapeHtml(stateBadge)}] ${escapeHtml(t.title || 'Task')}</div>
+        <div style="font-size:10px; opacity:0.8;">Specialist: ${escapeHtml(t.specialist || 'core')} · ${t.runtime_sec || 0}s</div>
+      </div>`;
+
+      fullOpsHtml += `<div class="task-card-item ${escapeHtml(t.state)}">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span style="font-family:var(--font-display); font-size:13px; color:${stateColor}; font-weight:700;">${escapeHtml(t.title || 'Directive')}</span>
+          <span class="agent-status-indicator" style="background:${stateColor}; color:#000;">${escapeHtml(stateBadge)}</span>
+        </div>
+        <div style="font-family:var(--font-mono); font-size:11px; color:#a7ffeb; margin-bottom:6px;">
+          Task ID: <code>${escapeHtml(t.id || 'N/A')}</code> · Specialist: <strong>${escapeHtml(t.specialist || 'core')}</strong> · Runtime: ${t.runtime_sec || 0}s
+        </div>`;
+
+      if (t.state === "needs_approval") {
+        fullOpsHtml += `<div style="margin-top:8px; display:flex; gap:8px;">
+          <button class="hud-btn" style="border-color:#38ef7d; color:#38ef7d; font-size:10px; padding:4px 10px;" onclick="window.authorizeTaskInline('${escapeHtml(t.id)}')">✓ AUTHORIZE</button>
+          <button class="hud-btn" style="border-color:#ff3344; color:#ff3344; font-size:10px; padding:4px 10px;" onclick="window.rejectTaskInline('${escapeHtml(t.id)}')">✕ REJECT</button>
+        </div>`;
+      }
+      fullOpsHtml += `</div>`;
+
+      // Auto-trigger approval modal if needed and not already open
+      if (t.state === "needs_approval" && !state.approvalModalOpen) {
+        openApprovalModal(t);
+      }
+    });
+  }
+
+  if (orch.recent_history && orch.recent_history.length > 0) {
+    orch.recent_history.forEach(item => {
+      fullOpsHtml += `<div class="task-card-item" style="border-left:3px solid #38ef7d;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <span style="font-family:var(--font-display); font-size:12px; color:#38ef7d; font-weight:700;">✓ ${escapeHtml(item.title || 'Completed Task')}</span>
+          <span style="font-family:var(--font-mono); font-size:10px; color:rgba(255,255,255,0.5);">COMPLETED</span>
+        </div>
+        <div style="font-family:var(--font-mono); font-size:10px; color:#e0f7fa; opacity:0.85;">
+          ${escapeHtml(item.evidence || 'Execution verified.')}
+        </div>
+      </div>`;
+    });
+  }
+
+  if (!orch.active_tasks?.length && !orch.recent_history?.length) {
+    fullOpsHtml = `<div class="task-card-item">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <span style="font-family:var(--font-display); font-size:13px; color:#00e5ff;">System Standby</span>
+        <span class="agent-status-indicator">READY</span>
+      </div>
+      <div style="font-family:var(--font-mono); font-size:11px; color:#a7ffeb;">
+        Master Orchestrator active. Concurrency bounded to ${orch.max_concurrency || 2} simultaneous tasks. All directives are logged with empirical evidence.
+      </div>
+    </div>`;
+  }
+
+  if (deckEl) {
+    if (activeHtml) {
+      deckEl.innerHTML = activeHtml;
+    } else if (orch.recent_history && orch.recent_history.length > 0) {
+      const last = orch.recent_history[orch.recent_history.length - 1];
+      deckEl.innerHTML = `<div style="opacity:0.85;">
+        <span style="color:#38ef7d;">✓ LAST COMPLETED:</span> ${escapeHtml(last.title || '')}<br>
+        <small style="opacity:0.7;">${escapeHtml(last.evidence || '')}</small>
+      </div>`;
+    } else {
+      deckEl.innerHTML = `<div style="opacity:0.6;">All systems nominal. Ready for directives.</div>`;
+    }
+  }
+
+  if (opsList) {
+    opsList.innerHTML = fullOpsHtml;
+  }
+}
+
+window.authorizeTaskInline = async function(taskId) {
+  try {
+    playSound("ack");
+    await fetch("/api/orchestrator/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: taskId })
+    });
+    if (typeof showToast === "function") showToast(`Task #${taskId} authorized`, "success");
+    window.refreshOperationsPipeline();
+  } catch(e) {
+    if (typeof showToast === "function") showToast("Authorization failed: " + e.message, "error");
+  }
+};
+
+window.rejectTaskInline = async function(taskId) {
+  try {
+    playSound("blip");
+    await fetch("/api/orchestrator/reject", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: taskId, reason: "Rejected via Operations Console" })
+    });
+    if (typeof showToast === "function") showToast(`Task #${taskId} rejected`, "info");
+    window.refreshOperationsPipeline();
+  } catch(e) {
+    if (typeof showToast === "function") showToast("Rejection failed: " + e.message, "error");
+  }
+};
+
+window.refreshOperationsPipeline = async function() {
+  try {
+    const res = await fetch("/api/orchestrator/status");
+    if (res.ok) {
+      const data = await res.json();
+      renderOperationsPipeline(data);
+    }
+  } catch(e) {}
+};
+
+function updateTelemetryUI(data) {
+  // CPU
+  const cpuPct = Math.round(data.cpu.percent);
+  document.getElementById("cpuPercent").innerText = cpuPct;
+  const cpuCircle = document.getElementById("cpuCircle");
+  const offset = 264 - (264 * cpuPct) / 100;
+  cpuCircle.style.strokeDashoffset = offset;
+  document.getElementById("cpuFreq").innerText = `${data.cpu.freq_mhz} MHz · ${data.cpu.count} Cores`;
+
+  // Core bars (16 Cores)
+  const coreContainer = document.getElementById("coreBarsContainer");
+  if (data.cpu.cores && coreContainer.children.length !== data.cpu.cores.length) {
+    coreContainer.innerHTML = "";
+    data.cpu.cores.forEach(() => {
+      const item = document.createElement("div");
+      item.className = "core-bar-item";
+      const fill = document.createElement("div");
+      fill.className = "core-bar-fill";
+      item.appendChild(fill);
+      coreContainer.appendChild(item);
+    });
+  }
+  if (data.cpu.cores) {
+    data.cpu.cores.forEach((coreVal, idx) => {
+      if (coreContainer.children[idx]) {
+        coreContainer.children[idx].querySelector(".core-bar-fill").style.height = `${Math.round(coreVal)}%`;
+      }
+    });
+  }
+
+  // RAM
+  const ram = data.memory;
+  document.getElementById("ramDetail").innerText = `${ram.used_gb} / ${ram.total_gb} GB`;
+  document.getElementById("ramProgressFill").style.width = `${ram.percent}%`;
+  document.getElementById("ramPercentLabel").innerText = `ALLOCATION: ${ram.percent}% (${ram.free_gb} GB FREE)`;
+
+  // Disks
+  const diskContainer = document.getElementById("diskContainer");
+  diskContainer.innerHTML = "";
+  data.disks.forEach((d) => {
+    const div = document.createElement("div");
+    div.className = "disk-item";
+    div.innerHTML = `
+      <div class="disk-info-row">
+        <span>${d.device} (${d.mountpoint})</span>
+        <span style="color:var(--hud-cyan)">${d.used_gb}/${d.total_gb} GB (${d.percent}%)</span>
+      </div>
+      <div class="progress-bar-container">
+        <div class="progress-bar-fill" style="width: ${d.percent}%"></div>
+      </div>
+    `;
+    diskContainer.appendChild(div);
+  });
+
+  // Network
+  const net = data.network;
+  document.getElementById("netUp").innerText = `${net.upload_kbps} KB/s`;
+  document.getElementById("netDown").innerText = `${net.download_kbps} KB/s`;
+
+  // Uptime
+  document.getElementById("uptimeLabel").innerText = data.uptime;
+
+  // Active Window Focus
+  document.getElementById("activeWindowTitle").innerText = data.active_window || "Desktop";
+
+  // Top Processes
+  const procTable = document.getElementById("processTable");
+  procTable.innerHTML = "";
+  data.top_processes.forEach((p) => {
+    const row = document.createElement("div");
+    row.className = "proc-row";
+    row.innerHTML = `
+      <span class="proc-name" title="${p.name} (PID: ${p.pid})">${p.name}</span>
+      <span class="proc-mem">${p.ram_mb} MB</span>
+    `;
+    procTable.appendChild(row);
+  });
+
+  // Evolution Telemetry
+  if (data.evolution) {
+    const evo = data.evolution;
+    const badge = document.getElementById("badgeEvolution");
+    if (badge) {
+      badge.innerHTML = `<span class="dot" style="background:#ffaa00; box-shadow:0 0 8px #ffaa00;"></span> EVOLUTION: LVL ${evo.level} (${evo.knowledge_nodes} NODES)`;
+    }
+    const memTag = document.getElementById("memVaultLvlBadge");
+    if (memTag) {
+      memTag.innerText = `LEVEL ${evo.level} · ${evo.knowledge_nodes} KNOWLEDGE NODES`;
+    }
+  }
+
+  // Master Orchestrator Telemetry & Pipeline
+  if (data.orchestrator) {
+    const orch = data.orchestrator;
+    const badgeTasks = document.getElementById("badgeTasks");
+    if (badgeTasks) {
+      const activeCnt = orch.active_tasks_count || 0;
+      const maxConc = orch.max_concurrency || 2;
+      const dotColor = activeCnt > 0 ? "#00e5ff" : "#38ef7d";
+      badgeTasks.innerHTML = `<span class="dot" style="background:${dotColor}; box-shadow:0 0 8px ${dotColor};"></span> TASKS: ${activeCnt}/${maxConc}`;
+    }
+
+    const summaryEl = document.getElementById("taskPipelineSummary");
+    if (summaryEl) {
+      summaryEl.innerText = `${orch.active_tasks_count || 0} ACTIVE · ${orch.recent_completed_count || 0} DONE`;
+    }
+
+    renderOperationsPipeline(orch);
+  }
+
+  // Model Gateway Circuit Breaker Status
+  if (data.gateway) {
+    const badgeGateway = document.getElementById("badgeGateway");
+    if (badgeGateway) {
+      const gStatus = data.gateway.status || "online";
+      const gColor = gStatus === "online" ? "#38ef7d" : (gStatus === "degraded" ? "#ffaa00" : "#ff3344");
+      const lat = data.gateway.average_latency_sec || 0.45;
+      badgeGateway.innerHTML = `<span class="dot" style="background:${gColor}; box-shadow:0 0 8px ${gColor};"></span> GATEWAY: ${gStatus.toUpperCase()} · ${lat}s`;
+    }
+  }
+}
+
+// ----------------------------------------------------
+// CHAT & VOICE WEBSOCKET (/ws/chat)
+// ----------------------------------------------------
+let wsChat = null;
+let _chatReconnectDelay = 1000;
+let _chatHeartbeatTimer = null;
+
+function connectChat() {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const wsUrl = `${protocol}//${window.location.host}/ws/chat`;
+  wsChat = new WebSocket(wsUrl);
+
+  wsChat.onopen = () => {
+    _chatReconnectDelay = 1000; // Reset backoff on successful connect
+    document.getElementById("badgeCore").innerHTML = `<span class="dot"></span> CORE: ONLINE`;
+    checkAntigravityStatus();
+    appendLog("info", "LINK", "Neural chat WebSocket connected.");
+
+    // Start heartbeat ping every 15 seconds
+    if (_chatHeartbeatTimer) clearInterval(_chatHeartbeatTimer);
+    _chatHeartbeatTimer = setInterval(() => {
+      if (wsChat && wsChat.readyState === WebSocket.OPEN) {
+        try {
+          wsChat.send(JSON.stringify({ type: "ping" }));
+        } catch (e) {}
+      }
+    }, 15000);
+  };
+
+  wsChat.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      handleIncomingChatMessage(msg);
+    } catch (e) {
+      console.error("Chat parse error:", e);
+    }
+  };
+
+  wsChat.onclose = () => {
+    if (_chatHeartbeatTimer) clearInterval(_chatHeartbeatTimer);
+    document.getElementById("badgeCore").innerHTML = `<span class="dot" style="background:#ff3344; box-shadow:0 0 8px #ff3344;"></span> CORE: RECONNECTING`;
+    appendLog("warning", "LINK", `Chat WebSocket disconnected. Reconnecting in ${_chatReconnectDelay / 1000}s...`);
+
+    // Exponential backoff: 1s → 2s → 4s → 8s → 16s → max 30s
+    setTimeout(connectChat, _chatReconnectDelay);
+    _chatReconnectDelay = Math.min(_chatReconnectDelay * 2, 30000);
+  };
+
+  wsChat.onerror = () => {
+    // Will trigger onclose automatically
+  };
+}
+
+async function checkAntigravityStatus() {
+  try {
+    const res = await fetch("/api/antigravity/status");
+    const data = await res.json();
+    const badge = document.getElementById("badgeAntigravity");
+    if (badge) {
+      badge.innerHTML = `<span class="dot" style="background:#00e5ff; box-shadow:0 0 8px #00e5ff;"></span> ANTIGRAVITY: CONNECTED`;
+      badge.title = `Google Antigravity Project Workspace Linked · Zero API Keys Required · ${data.tools_count || 12} PC Tools Active`;
+    }
+  } catch (e) {
+    console.warn("Antigravity status fetch error:", e);
+  }
+}
+
+function setAssistantStatus(newStatus, subtext) {
+  state.status = newStatus;
+  const statusEl = document.getElementById("coreStatusLabel");
+  const subtextEl = document.getElementById("coreSubtext");
+  const lightEl = document.getElementById("inputStatusIndicator");
+  const micBtn = document.getElementById("btnVoiceToggle");
+  const cmdInput = document.getElementById("cmdInput");
+  const btnSend = document.getElementById("btnSend");
+
+  if (statusEl) {
+    statusEl.innerText = newStatus.toUpperCase().replace(/_/g, " ");
+    statusEl.className = "core-status state-" + newStatus.toLowerCase().replace(/_/g, "-");
+  }
+  if (subtext && subtextEl) {
+    subtextEl.innerText = subtext.toUpperCase();
+  }
+
+  if (newStatus === "listening" || newStatus === "speech_detected") {
+    if (lightEl) {
+      lightEl.style.background = "#00ffff";
+      lightEl.style.boxShadow = "0 0 10px #00ffff";
+    }
+    if (micBtn) {
+      micBtn.classList.remove("speaking-locked");
+      micBtn.classList.add("active");
+    }
+    updateMicBadge("LIVE", "#00ffff");
+    if (cmdInput) { cmdInput.disabled = false; cmdInput.placeholder = "Listening to your voice, Sir Shakil..."; }
+    if (btnSend) btnSend.disabled = false;
+  } else if (newStatus === "thinking" || newStatus === "transcribing" || newStatus === "generating" || newStatus === "processing") {
+    if (lightEl) {
+      lightEl.style.background = "var(--hud-amber)";
+      lightEl.style.boxShadow = "0 0 10px var(--hud-amber)";
+    }
+    if (micBtn) {
+      micBtn.classList.add("speaking-locked");
+      micBtn.classList.remove("active");
+    }
+    updateMicBadge("PROCESSING", "#ffaa00");
+    if (cmdInput) { cmdInput.disabled = true; cmdInput.placeholder = "Jarvis processing directive..."; }
+    if (btnSend) btnSend.disabled = true;
+  } else if (newStatus === "executing") {
+    if (lightEl) {
+      lightEl.style.background = "var(--hud-purple)";
+      lightEl.style.boxShadow = "0 0 10px var(--hud-purple)";
+    }
+    if (micBtn) {
+      micBtn.classList.add("speaking-locked");
+    }
+    updateMicBadge("EXECUTING", "#9d4edd");
+    if (cmdInput) cmdInput.disabled = true;
+    if (btnSend) btnSend.disabled = true;
+  } else if (newStatus === "speaking") {
+    if (lightEl) {
+      lightEl.style.background = "#38ef7d";
+      lightEl.style.boxShadow = "0 0 10px #38ef7d";
+    }
+    if (micBtn) {
+      micBtn.classList.add("speaking-locked");
+      micBtn.classList.remove("active");
+    }
+    updateMicBadge("MUTED (SPEAKING)", "#38ef7d");
+    if (cmdInput) { cmdInput.disabled = true; cmdInput.placeholder = "Jarvis speaking... microphone will auto-arm when complete."; }
+    if (btnSend) btnSend.disabled = true;
+  } else if (newStatus === "waiting_for_approval") {
+    if (lightEl) {
+      lightEl.style.background = "#ffaa00";
+      lightEl.style.boxShadow = "0 0 15px #ffaa00";
+    }
+    if (micBtn) micBtn.classList.remove("active");
+    updateMicBadge("AWAITING APPROVAL", "#ffaa00");
+  } else if (newStatus === "error" || newStatus === "cancelled") {
+    if (lightEl) {
+      lightEl.style.background = "var(--hud-red)";
+      lightEl.style.boxShadow = "0 0 12px var(--hud-red)";
+    }
+    updateMicBadge("ABORTED", "#ff3344");
+    setTimeout(() => { if (state.status === "error" || state.status === "cancelled") setAssistantStatus("idle"); }, 2000);
+  } else {
+    if (lightEl) {
+      lightEl.style.background = "var(--hud-cyan)";
+      lightEl.style.boxShadow = "0 0 8px var(--hud-cyan)";
+    }
+    if (statusEl) statusEl.innerText = "ONLINE";
+    if (subtextEl) subtextEl.innerText = "AWAITING DIRECTIVE";
+    if (micBtn) {
+      micBtn.classList.remove("speaking-locked");
+      if (!state.isListening) micBtn.classList.remove("active");
+    }
+    updateMicBadge("STANDBY", "#888888");
+    if (cmdInput) { cmdInput.disabled = false; cmdInput.placeholder = "Enter directive or speak freely ('Jarvis, check my emails')..."; }
+    if (btnSend) btnSend.disabled = false;
+  }
+}
+
+// Streaming text accumulator for progressive rendering
+let _streamingAccumulated = "";
+let _streamingLogLine = null;
+let _streamingChatBubble = null;
+
+function handleIncomingChatMessage(msg) {
+  const feed = document.getElementById("terminalFeed");
+
+  if (msg.type === "abort") {
+    clearAudioQueue();
+    if (_streamingLogLine) {
+      _streamingLogLine.remove();
+      _streamingLogLine = null;
+    }
+    if (_streamingChatBubble) {
+      _streamingChatBubble.remove();
+      _streamingChatBubble = null;
+    }
+    _streamingAccumulated = "";
+    state.jarvisIsSpeaking = false;
+    currentPlayingAudio = null;
+    unlockMicAfterJarvisTurn();
+    setAssistantStatus("idle", "ABORTED");
+    appendLog("warning", "ABORT", msg.reason || "Directive interrupted.");
+    return;
+  }
+
+  if (msg.type === "status") {
+    if (msg.status === "thinking") {
+      lockMicForJarvisTurn("PROCESSING");
+      setAssistantStatus("thinking", "PROCESSING DIRECTIVE");
+      // Reset streaming accumulator for new response
+      _streamingAccumulated = "";
+      _streamingLogLine = null;
+      _streamingChatBubble = null;
+    } else if (msg.status === "speaking") {
+      lockMicForJarvisTurn("SPEAKING");
+      setAssistantStatus("speaking", "COMMUNICATING");
+      // If speaker duration provided, set watchdog
+      if (msg.duration) {
+        if (state.speakingTurnTimer) clearTimeout(state.speakingTurnTimer);
+        state.speakingTurnTimer = setTimeout(() => {
+          if (state.status === "speaking") {
+            unlockMicAfterJarvisTurn();
+          }
+        }, (msg.duration + 0.5) * 1000);
+      }
+    } else if (msg.status === "idle") {
+      state.jarvisIsSpeaking = false;
+      unlockMicAfterJarvisTurn();
+    } else {
+      setAssistantStatus(msg.status);
+    }
+  } else if (msg.type === "thought") {
+    appendLog("thought", "THOUGHT", msg.content);
+    if (!state.currentThoughts) state.currentThoughts = [];
+    state.currentThoughts.push(msg.content);
+  } else if (msg.type === "user_speech") {
+    // Natively heard speech from Python background
+    appendLog("user", "SIR SHAKIL", msg.text);
+    appendDedicatedChatMessage("user", msg.text);
+  } else if (msg.type === "chunk") {
+    // STREAMING: Progressive text rendering as tokens arrive
+    _streamingAccumulated = msg.accumulated || (_streamingAccumulated + (msg.content || ""));
+    setAssistantStatus("thinking", `STREAMING RESPONSE...`);
+
+    // Update terminal feed progressively
+    if (!_streamingLogLine) {
+      _streamingLogLine = document.createElement("div");
+      _streamingLogLine.className = "log-line jarvis streaming-active";
+      const timeStr = new Date().toTimeString().split(" ")[0];
+      _streamingLogLine.innerHTML = `
+        <span class="log-time">[${timeStr}]</span>
+        <span class="log-sender">J.A.R.V.I.S.:</span>
+        <span class="log-text streaming-text"></span>
+      `;
+      feed.appendChild(_streamingLogLine);
+    }
+    const logTextEl = _streamingLogLine.querySelector(".streaming-text");
+    if (logTextEl) logTextEl.textContent = _streamingAccumulated;
+    feed.scrollTop = feed.scrollHeight;
+
+    // Update dedicated chat progressively
+    const chatContainer = document.getElementById("dedicatedChatMessages");
+    if (chatContainer && !_streamingChatBubble) {
+      _streamingChatBubble = document.createElement("div");
+      _streamingChatBubble.className = "chat-msg chat-msg-jarvis streaming-active";
+      const timeStr2 = new Date().toTimeString().split(" ")[0];
+      const modelTag = state.selectedModel ? `<span class="chat-model-pill">${escapeHtml(state.selectedModel.replace("agy/", "").replace("auto/", "").toUpperCase())}</span>` : "";
+      _streamingChatBubble.innerHTML = `
+        <div class="chat-meta">
+          <span>J.A.R.V.I.S.</span>
+          <span>${timeStr2}</span>
+          ${modelTag}
+        </div>
+        <div class="chat-bubble">
+          <div class="chat-bubble-text streaming-chat-text"></div>
+        </div>
+      `;
+      chatContainer.appendChild(_streamingChatBubble);
+    }
+    if (_streamingChatBubble) {
+      const chatTextEl = _streamingChatBubble.querySelector(".streaming-chat-text");
+      if (chatTextEl) chatTextEl.textContent = _streamingAccumulated;
+      const body = document.getElementById("dedicatedChatBody");
+      if (body) body.scrollTop = body.scrollHeight;
+    }
+  } else if (msg.type === "tool_call") {
+    playSound("ack");
+    const toolName = msg.tool || msg.name || "TOOL";
+    setAssistantStatus("executing", `EXECUTING: ${toolName}`);
+    appendLog("tool", "ACTION", `Invoking protocol '${toolName}' with params: ${JSON.stringify(msg.args || {})}`);
+  } else if (msg.type === "tool_result") {
+    appendLog("tool", "RESULT", `Protocol '${msg.name || msg.tool}' response: ${JSON.stringify(msg.result)}`);
+  } else if (msg.type === "response") {
+    // Final response arrived — replace streaming placeholders with final formatted version
+    if (_streamingLogLine) {
+      _streamingLogLine.remove();
+      _streamingLogLine = null;
+    }
+    if (_streamingChatBubble) {
+      _streamingChatBubble.remove();
+      _streamingChatBubble = null;
+    }
+    _streamingAccumulated = "";
+
+    appendLog("jarvis", "J.A.R.V.I.S.", msg.text);
+    state.chatHistory.push({ role: "model", content: msg.text });
+
+    // Cap chat history at 20 entries
+    if (state.chatHistory.length > 20) {
+      state.chatHistory = state.chatHistory.slice(-20);
+    }
+
+    appendDedicatedChatMessage("jarvis", msg.text, state.selectedModel, state.currentThoughts ? state.currentThoughts.slice() : []);
+    state.currentThoughts = [];
+  } else if (msg.type === "audio") {
+    enqueueBase64Audio(msg.audio_base64, (msg.text || "").length, msg.mime || "audio/wav", msg.duration || 3.0);
+  } else if (msg.type === "proactive_update") {
+    playSound("alert");
+    appendLog("warning", "PROACTIVE ALERT", msg.text);
+    if (msg.audio_base64) {
+      enqueueBase64Audio(msg.audio_base64, (msg.text || "").length, msg.mime || "audio/wav", msg.duration || 3.0);
+    }
+  } else if (msg.type === "pong") {
+    // Heartbeat response received — connection is alive
+  }
+}
+
+function appendLog(category, sender, text) {
+  const feed = document.getElementById("terminalFeed");
+  const line = document.createElement("div");
+  line.className = `log-line ${category}`;
+
+  const timeStr = new Date().toTimeString().split(" ")[0];
+  line.innerHTML = `
+    <span class="log-time">[${timeStr}]</span>
+    <span class="log-sender">${sender}:</span>
+    <span class="log-text">${escapeHtml(text)}</span>
+  `;
+  feed.appendChild(line);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+// ----------------------------------------------------
+// AUDIO PLAYBACK & VISUALIZER BINDING
+// ----------------------------------------------------
+const audioQueue = [];
+let isPlayingQueue = false;
+
+function enqueueBase64Audio(b64, textLength = 50, mime = "audio/wav", duration = 3.0) {
+  if (!b64) return;
+  audioQueue.push({b64, textLength, mime, duration});
+  processAudioQueue();
+}
+
+function processAudioQueue() {
+  if (isPlayingQueue || audioQueue.length === 0) return;
+  isPlayingQueue = true;
+  const nextItem = audioQueue.shift();
+  playBase64Audio(nextItem.b64, nextItem.textLength, nextItem.mime, nextItem.duration, () => {
+     isPlayingQueue = false;
+     processAudioQueue();
+  });
+}
+
+function clearAudioQueue() {
+  audioQueue.length = 0;
+  if (currentPlayingAudio) {
+      try { currentPlayingAudio.pause(); currentPlayingAudio = null; } catch(e){}
+  }
+  isPlayingQueue = false;
+  unlockMicAfterJarvisTurn();
+}
+
+let currentPlayingAudio = null;
+
+function playBase64Audio(b64, textLength, mime, duration, onComplete) {
+  unlockAllAudioEngines();
+  lockMicForJarvisTurn("SPEAKING");
+  setAssistantStatus("speaking", "COMMUNICATING");
+
+  const estSec = duration || Math.max(2, Math.min(30, (textLength || 60) / 14));
+
+  if (!b64) {
+    setTimeout(() => {
+       unlockMicAfterJarvisTurn();
+       if (onComplete) onComplete();
+    }, estSec * 1000);
+    return;
+  }
+
+  // Pure PC Speaker mode: backend already dispatched speech to Windows hardware
+  if (state.audioMode === "speaker") {
+    setAssistantStatus("speaking", "COMMUNICATING (PC HARDWARE)");
+    setTimeout(() => {
+       unlockMicAfterJarvisTurn();
+       if (onComplete) onComplete();
+    }, estSec * 1000);
+    return;
+  }
+
+  try {
+    if (currentPlayingAudio) {
+      try { currentPlayingAudio.pause(); } catch(e){}
+    }
+
+    const actualMime = (mime && mime.includes("wav")) ? "audio/wav" : (b64.startsWith("UklGR") ? "audio/wav" : "audio/mp3");
+    const audio = new Audio(`data:${actualMime};base64,${b64}`);
+    currentPlayingAudio = audio;
+    audio.volume = Math.max(0.05, Math.min(1.0, (state.volume / 100) || 1.0));
+
+    if (audioCtx && analyser && audioCtx.state === "running") {
+      try {
+        const source = audioCtx.createMediaElementSource(audio);
+        source.connect(analyser);
+      } catch (e) {}
+    }
+
+    let endedFired = false;
+    const handlePlaybackFinished = () => {
+      if (endedFired) return;
+      endedFired = true;
+      unlockMicAfterJarvisTurn();
+      if (onComplete) onComplete();
+    };
+
+    audio.onended = handlePlaybackFinished;
+    audio.onerror = (e) => {
+      console.warn("Browser audio error, falling back to timer:", e);
+      setTimeout(handlePlaybackFinished, estSec * 1000);
+    };
+
+    const p = audio.play();
+    if (p !== undefined) {
+      p.catch(async (err) => {
+        console.warn("Browser autoplay error, relying on timer:", err);
+        setTimeout(handlePlaybackFinished, estSec * 1000);
+      });
+    }
+
+    // Safety watchdog timer
+    setTimeout(() => {
+      if (state.jarvisIsSpeaking && !endedFired) {
+        handlePlaybackFinished();
+      }
+    }, (estSec + 1.5) * 1000);
+
+  } catch (err) {
+    console.error("Audio playback exception:", err);
+    setTimeout(unlockMicAfterJarvisTurn, estSec * 1000);
+  }
+}
+
+// ----------------------------------------------------
+// SPEECH RECOGNITION (VOICE INPUT & ALWAYS-ON WAKE)
+// ----------------------------------------------------
+let recognition = null;
+let speechSilenceTimer = null;
+let currentRecordedText = "";
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+// Phonetic auto-corrector & regional speech normalizer
+function normalizeSpokenText(text) {
+  if (!text) return "";
+  let clean = text.trim();
+
+  // 1. Wake-word phonetic mishearings from Google Speech engine
+  clean = clean.replace(/\b(travis|service|harvest|charles|starbucks|java|jawis|job is|chavez|drvis|jarbis|javish|jarv|jervis|davis|garvis|tarvis)\b/gi, "Jarvis");
+
+  // 2. Antigravity and OmniRoute platform mishearings
+  clean = clean.replace(/\b(anti\s*gravity|anti-gravity|anti\s*grabby|integrative|integra)\b/gi, "antigravity");
+  clean = clean.replace(/\b(omni\s*route|omni\s*road|army\s*route|omni\s*root)\b/gi, "omniroute");
+
+  // 3. AI Models and Providers
+  clean = clean.replace(/\b(cloud|claud|clod)\s*(sonnet|opus|3\.5|3\.7|4\.6)?\b/gi, "Claude $2");
+  clean = clean.replace(/\b(jiminy|jimmy|gemini)\s*(flash|pro|3\.7|3\.8)?\b/gi, "Gemini $2");
+  clean = clean.replace(/\b(sonit|senate)\b/gi, "sonnet");
+
+  // 4. Common application and tool mishearings
+  clean = clean.replace(/\b(note\s*pad|not\s*pad|no\s*pad)\b/gi, "notepad");
+  clean = clean.replace(/\b(cal\s*culator|calculater|calc|cockulator)\b/gi, "calculator");
+  clean = clean.replace(/\b(event\s*bright|even\s*bright|event\s*bride|event\s*bite|even\s*bite)\b/gi, "eventbrite");
+  clean = clean.replace(/\b(google\s*chrome|chrome\s*browser)\b/gi, "chrome");
+  clean = clean.replace(/\b(vs\s*code|visual\s*studio\s*code|visual\s*code|v\s*s\s*code)\b/gi, "vscode");
+  clean = clean.replace(/\b(you\s*tube|u\s*tube)\b/gi, "youtube");
+  clean = clean.replace(/\b(screen\s*shot|clean\s*shot|screen\s*short|capture\s*screen|take\s*a\s*screenshot)\b/gi, "screenshot");
+
+  // 5. Regional / Banglish directives translated to English intents
+  clean = clean.replace(/\b(kholo|khulo|open koro|chalu koro|start koro)\b/gi, "open");
+  clean = clean.replace(/\b(bondho koro|bondho|close koro|off koro)\b/gi, "close");
+  clean = clean.replace(/\b(dekhao|dekhiye dao|show koro)\b/gi, "show");
+  clean = clean.replace(/\b(email dekhao|email check koro|inbox dekhao|mail dekhao)\b/gi, "check emails");
+  clean = clean.replace(/\b(internet e search koro|internet e research koro|online e research koro|online search koro|web research)\b/gi, "research online");
+  clean = clean.replace(/\b(ki obostha|kemon acho|status ki|diagnostics dekhao)\b/gi, "status report");
+  clean = clean.replace(/\b(sound barhao|volume barhao|sound increase|sound up)\b/gi, "turn up volume");
+  clean = clean.replace(/\b(sound komao|volume komao|sound decrease|sound down)\b/gi, "turn down volume");
+
+  return clean;
+}
+
+function isWakeCommand(text) {
+  const clean = text.toLowerCase().trim().replace(/[^a-z0-9\s]/g, "");
+  return /^(jarvis|hey jarvis|hello jarvis|jarvis wake up|wake up jarvis|wake up|are you awake|are you there jarvis|jarvis are you awake|javis|jarv|service|travis)$/i.test(clean);
+}
+
+function containsWakeTrigger(text) {
+  const clean = text.toLowerCase().trim();
+  return [
+    "jarvis", "javis", "jarv", "shakil", "hey jarvis", "wake up", "wake up jarvis",
+    "travis", "service", "harvest", "charles", "starbucks", "java", "jawis", "job is", "assistant"
+  ].some(w => clean.includes(w));
+}
+
+function startVoiceListener() {
+  if (!recognition) return;
+  if (state.jarvisIsSpeaking || state.status === "speaking" || state.status === "thinking") {
+    return;
+  }
+  try {
+    initAudioContext();
+    if (!state.isListening) {
+      recognition.start();
+    }
+  } catch (e) {
+    // If already active or in transition
+  }
+}
+
+function updateMicBadge(statusText, color = "#00e5ff") {
+  const badge = document.getElementById("badgeMicStatus");
+  if (badge) {
+    badge.innerHTML = `<span class="dot" style="background:${color}; box-shadow:0 0 8px ${color};"></span> MIC: ${statusText.toUpperCase()}`;
+  }
+}
+
+if (SpeechRecognition) {
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = state.speechLang || "en-IN";
+
+  recognition.onstart = () => {
+    if (state.jarvisIsSpeaking || state.status === "speaking" || state.status === "thinking") {
+      try { recognition.abort(); } catch(e){}
+      state.isListening = false;
+      return;
+    }
+    state.isListening = true;
+    currentRecordedText = "";
+    document.getElementById("btnVoiceToggle").classList.add("active");
+    updateMicBadge("LIVE", "#00ffff");
+    
+    setAssistantStatus("listening", "LISTENING...");
+    appendLog("info", "VOICE", "Microphone audio engine online & listening.");
+  };
+
+  function evaluateAndTransmitSpeech(text) {
+    if (!text.trim()) return;
+    transmitCommand(text);
+  }
+
+  recognition.onresult = (event) => {
+    if (state.jarvisIsSpeaking || state.status === "speaking" || state.status === "thinking") {
+      return;
+    }
+
+    let fullTranscript = "";
+    let hasFinal = false;
+    let finalConfidence = 1.0;
+    let finalCount = 0;
+
+    for (let i = 0; i < event.results.length; i++) {
+      const item = event.results[i];
+      fullTranscript += item[0].transcript + " ";
+      if (item.isFinal) {
+        hasFinal = true;
+        if (item[0].confidence > 0) {
+          finalConfidence = Math.min(finalConfidence, item[0].confidence);
+          finalCount++;
+        }
+      }
+    }
+
+    const rawText = fullTranscript.trim();
+    if (!rawText) return;
+
+    // Reject extremely low-confidence final transcripts (prevents phantom triggers in noise)
+    if (hasFinal && finalCount > 0 && finalConfidence < 0.3) {
+      console.log("Rejected low-confidence transcript:", rawText, "confidence:", finalConfidence);
+      return;
+    }
+
+    const currentText = normalizeSpokenText(rawText);
+    currentRecordedText = currentText;
+    document.getElementById("cmdInput").value = currentText;
+    setAssistantStatus("listening", `HEARING: "${currentText.slice(0, 36)}"`);
+
+    if (speechSilenceTimer) clearTimeout(speechSilenceTimer);
+
+    const isFastWake = isWakeCommand(currentText);
+    const delay = isFastWake ? 250 : (hasFinal ? 500 : 800);
+
+    speechSilenceTimer = setTimeout(() => {
+      if (currentRecordedText && !state.jarvisIsSpeaking && state.status !== "speaking") {
+        const textToSubmit = currentRecordedText;
+        currentRecordedText = "";
+        
+        // Voice Cancel feature - robust multi-layer matching
+        const checkText = textToSubmit.toLowerCase().trim().replace(/[^a-z\s]/g, "");
+        if (/^(cancel|stop|abort|never mind|nevermind|stop processing|cancel that|be quiet|wait|shut up|halt|silence)$/.test(checkText)) {
+          setAssistantStatus("listening", "VOICE INPUT CANCELLED.");
+          document.getElementById("cmdInput").value = "";
+          playSound("blip");
+          clearAudioQueue();
+          if (wsChat && wsChat.readyState === WebSocket.OPEN) {
+              wsChat.send(JSON.stringify({ type: "cancel" }));
+          }
+          fetch("/api/voice/stop", { method: "POST" }).catch(() => {});
+          try { recognition.stop(); } catch(e){} // Force stop to clear buffer
+          return;
+        }
+
+        evaluateAndTransmitSpeech(textToSubmit);
+        try { recognition.stop(); } catch(e){} // Force stop to flush current recognition buffer and prevent duplicates
+      }
+    }, delay);
+  };
+
+  recognition.onerror = (e) => {
+    if (e.error === "no-speech") {
+      // Natural silence event from Chrome engine, safely ignored
+      return;
+    }
+    console.warn("Speech recognition event:", e.error);
+    if (e.error === "not-allowed") {
+      updateMicBadge("BLOCKED", "#ff3344");
+      appendLog("warning", "PERMISSION", "Microphone access blocked. Click the microphone icon in your browser URL bar to allow audio.");
+      state.continuousVoice = false;
+      state.isListening = false;
+      document.getElementById("btnVoiceToggle").classList.remove("active");
+      setAssistantStatus("idle");
+    } else if (e.error === "audio-capture") {
+      updateMicBadge("NO MIC", "#ffaa00");
+      appendLog("warning", "HARDWARE", "No audio input hardware detected. Please connect your microphone.");
+    }
+  };
+
+  recognition.onend = () => {
+    state.isListening = false;
+    
+    // Strict Turn-Taking Lock: If Jarvis is speaking or thinking, DO NOT restart mic!
+    if (state.jarvisIsSpeaking || state.status === "speaking" || state.status === "thinking") {
+      updateMicBadge("MUTED (JARVIS SPEAKING)", "#ff3344");
+      return;
+    }
+
+    if (!state.continuousVoice) {
+      updateMicBadge("STANDBY", "#888888");
+      document.getElementById("btnVoiceToggle").classList.remove("active");
+      if (state.status === "listening") setAssistantStatus("idle");
+    } else {
+      updateMicBadge("SYNCING", "#00e5ff");
+    }
+
+    if (currentRecordedText && !state.jarvisIsSpeaking && state.status !== "speaking") {
+      const textToSubmit = currentRecordedText;
+      currentRecordedText = "";
+      evaluateAndTransmitSpeech(textToSubmit);
+    }
+    
+    // Always-on loop with safe debounce so Chrome Speech API does not raise InvalidStateError
+    if (state.continuousVoice && !state.jarvisIsSpeaking && state.status !== "speaking" && state.status !== "thinking") {
+      setTimeout(() => {
+        if (state.continuousVoice && !state.isListening && !state.jarvisIsSpeaking && state.status !== "speaking" && state.status !== "thinking") {
+          try {
+            recognition.start();
+          } catch(e){}
+        }
+      }, 150);
+    }
+  };
+}
+
+function evaluateAndTransmitSpeech(transcript) {
+  transcript = transcript.trim();
+  if (!transcript) return;
+  if (state.jarvisIsSpeaking || state.status === "speaking" || state.status === "thinking") {
+    console.log("Duplex guard: dropped speech during Jarvis turn:", transcript);
+    return;
+  }
+
+  // Wake-word filtering (ONLY if explicitly enabled by user)
+  if (state.continuousVoice && state.wakeWordEnabled) {
+    const isConversationActive = Date.now() < state.conversationActiveUntil;
+    const hasWakeWord = containsWakeTrigger(transcript);
+    const isDirectAction = /^(open|launch|start|close|kill|check|what|how|who|why|where|tell|turn|set|play|pause|mute|lock|screenshot|status|help|diagnostics)\b/i.test(transcript);
+
+    if (!hasWakeWord && !isConversationActive && !isDirectAction) {
+      console.log("Wake word filter: ignoring ambient speech:", transcript);
+      setAssistantStatus("listening", "AWAITING 'JARVIS'...");
+      document.getElementById("cmdInput").value = "";
+      return;
+    }
+
+    // Refresh active conversation window for 25 seconds of seamless interaction
+    state.conversationActiveUntil = Date.now() + 25000;
+  }
+
+  // Instant auditory and visual confirmation
+  playSound("ack");
+  lockMicForJarvisTurn("PROCESSING");
+  setAssistantStatus("thinking", `EXECUTING: "${transcript.slice(0, 24)}"`);
+
+  // Transmit directive immediately!
+  transmitCommand(transcript);
+
+  // If not continuous voice, stop active mic
+  if (!state.continuousVoice && recognition && state.isListening) {
+    try { recognition.stop(); } catch(e){}
+  }
+}
+
+function toggleVoiceListening() {
+  playSound("blip");
+  if (!recognition) {
+    alert("Speech Recognition API is not supported in this browser. Please open in Chrome or Edge for voice listening, or type directives in the Transmit bar!");
+    return;
+  }
+  if (state.isListening) {
+    state.continuousVoice = false;
+    document.getElementById("chkContinuousVoice").checked = false;
+    try { recognition.stop(); } catch(e){}
+    state.isListening = false;
+    document.getElementById("btnVoiceToggle").classList.remove("active");
+    setAssistantStatus("idle");
+  } else {
+    state.continuousVoice = true;
+    document.getElementById("chkContinuousVoice").checked = true;
+    startVoiceListener();
+  }
+}
+
+// ----------------------------------------------------
+// CODE EXPORT & CLIPBOARD UTILITIES
+// ----------------------------------------------------
+window.saveCodeSnippetToDesktop = async function(btn) {
+  const code = btn.getAttribute("data-code") || "";
+  const lang = btn.getAttribute("data-lang") || "txt";
+  const origText = btn.innerText;
+
+  const extMap = {
+    python: "py", py: "py", javascript: "js", js: "js",
+    html: "html", css: "css", json: "json", batch: "bat",
+    bat: "bat", powershell: "ps1", ps1: "ps1", sh: "sh",
+    bash: "sh", sql: "sql", typescript: "ts", ts: "ts"
+  };
+  const ext = extMap[lang.toLowerCase()] || "txt";
+  const filename = `code_${Date.now()}.${ext}`;
+
+  btn.innerText = "💾 SAVING...";
+  btn.disabled = true;
+
+  try {
+    const res = await fetch("/api/code/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: code,
+        filename: filename,
+        folder: "Jarvis_Generated_Code"
+      })
+    });
+    const data = await res.json();
+    if (data.success) {
+      playSound("ack");
+      btn.innerText = "✓ SAVED TO DESKTOP";
+      btn.style.borderColor = "#38ef7d";
+      btn.style.color = "#38ef7d";
+      appendLog("info", "FILE SAVED", `Saved '${data.filename}' to Desktop\\${data.folder}`);
+    } else {
+      btn.innerText = "❌ FAILED";
+      btn.style.borderColor = "#ff3366";
+      btn.style.color = "#ff3366";
+    }
+  } catch (err) {
+    btn.innerText = "❌ ERROR";
+  } finally {
+    setTimeout(() => {
+      btn.innerText = origText;
+      btn.disabled = false;
+      btn.style.borderColor = "#00e5ff";
+      btn.style.color = "#00e5ff";
+    }, 2500);
+  }
+};
+
+window.copyCodeSnippet = function(btn) {
+  const code = btn.getAttribute("data-code") || "";
+  if (code) {
+    navigator.clipboard.writeText(code);
+    const origText = btn.innerText;
+    btn.innerText = "✓ COPIED";
+    setTimeout(() => { btn.innerText = origText; }, 1500);
+  }
+};
+
+window.openDesktopCodeFolder = async function() {
+  playSound("blip");
+  try {
+    await fetch("/api/code/open", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder: "Jarvis_Generated_Code" })
+    });
+    appendLog("info", "EXPLORER", "Opened Desktop\\Jarvis_Generated_Code in Windows Explorer.");
+  } catch (e) {
+    console.error("Open code folder failed:", e);
+  }
+};
+
+// ----------------------------------------------------
+// DEDICATED CHAT FORMATTER & RENDERER
+// ----------------------------------------------------
+function formatMarkdownSimple(text) {
+  if (!text) return "";
+
+  // 1. Extract and format multi-line code blocks ```lang ... ```
+  let codeBlocks = [];
+  let processed = text.replace(/```([a-zA-Z0-9_\-\+]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+    const idx = codeBlocks.length;
+    const cleanLang = (lang || 'code').toUpperCase();
+    const escapedCode = escapeHtml(code.trim());
+    codeBlocks.push(`
+      <div class="code-block-container" style="margin: 10px 0; background: rgba(0, 15, 25, 0.95); border: 1px solid rgba(0, 229, 255, 0.35); border-radius: 6px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0, 229, 255, 0.12); padding: 6px 12px; border-bottom: 1px solid rgba(0, 229, 255, 0.25);">
+          <span style="font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: #00e5ff; letter-spacing: 1px;">📁 ${cleanLang} SCRIPT</span>
+          <div style="display:flex; gap:6px;">
+            <button class="chat-action-btn" onclick="saveCodeSnippetToDesktop(this)" data-code="${escapeHtml(code.trim())}" data-lang="${cleanLang.toLowerCase()}" style="font-size:10px; padding:2px 8px; border-color:#00e5ff; color:#00e5ff;">💾 SAVE TO DESKTOP</button>
+            <button class="chat-action-btn" onclick="copyCodeSnippet(this)" data-code="${escapeHtml(code.trim())}" style="font-size:10px; padding:2px 8px;">📋 COPY</button>
+          </div>
+        </div>
+        <pre style="margin:0; padding:12px; max-height:280px; overflow-y:auto; font-family:var(--font-mono); font-size:12px; line-height:1.5; color:#a0f0ff; background:transparent;"><code>${escapedCode}</code></pre>
+      </div>
+    `);
+    return `__CODE_BLOCK_${idx}__`;
+  });
+
+  let esc = escapeHtml(processed);
+  // bold **text**
+  esc = esc.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  // italic *text*
+  esc = esc.replace(/\*([^\*]+)\*/g, '<em>$1</em>');
+  // inline code `code`
+  esc = esc.replace(/`([^`]+)`/g, '<code style="background:rgba(0,229,255,0.15); color:#00e5ff; padding:2px 5px; border-radius:3px; font-family:var(--font-mono); font-size:12px;">$1</code>');
+  // line breaks
+  esc = esc.replace(/\n/g, '<br>');
+
+  // Re-inject rendered code blocks
+  codeBlocks.forEach((blockHtml, idx) => {
+    esc = esc.replace(`__CODE_BLOCK_${idx}__`, blockHtml);
+  });
+
+  return esc;
+}
+
+function appendDedicatedChatMessage(role, text, model = null, thoughts = []) {
+  const container = document.getElementById("dedicatedChatMessages");
+  if (!container) return;
+
+  const msgDiv = document.createElement("div");
+  msgDiv.className = `chat-msg ${role === "user" ? "chat-msg-user" : "chat-msg-jarvis"}`;
+
+  const timeStr = new Date().toTimeString().split(" ")[0];
+  const modelTag = (role !== "user" && model) ? `<span class="chat-model-pill">${escapeHtml(model.replace("agy/", "").replace("auto/", "").toUpperCase())}</span>` : "";
+
+  let thoughtHtml = "";
+  if (thoughts && thoughts.length > 0) {
+    const validThoughts = thoughts.filter(t => t && t.trim());
+    if (validThoughts.length > 0) {
+      thoughtHtml = `
+        <details class="chat-thought-block">
+          <summary class="chat-thought-summary">🧠 Neural Reasoning (${validThoughts.length} step${validThoughts.length > 1 ? 's' : ''})</summary>
+          <div style="margin-top:6px; white-space:pre-wrap; opacity:0.9;">${escapeHtml(validThoughts.join('\n'))}</div>
+        </details>
+      `;
+    }
+  }
+
+  const avatarLabel = role === "user" ? "SIR SHAKIL" : "J.A.R.V.I.S.";
+
+  msgDiv.innerHTML = `
+    <div class="chat-meta">
+      <span>${avatarLabel}</span>
+      <span>${timeStr}</span>
+      ${modelTag}
+    </div>
+    ${thoughtHtml}
+    <div class="chat-bubble">
+      <div class="chat-bubble-text">${formatMarkdownSimple(text)}</div>
+      ${role !== "user" ? `
+        <div class="chat-actions-bar">
+          <button class="chat-action-btn btn-copy-chat" title="Copy to clipboard">📋 COPY</button>
+          <button class="chat-action-btn btn-speak-chat" title="Replay on speakers">🔊 SPEAK</button>
+          ${text.includes("```") ? `<button class="chat-action-btn" onclick="openDesktopCodeFolder()" title="Open Desktop Code Folder" style="border-color:#38ef7d; color:#38ef7d;">📂 OPEN DESKTOP FOLDER</button>` : ''}
+        </div>
+      ` : ''}
+    </div>
+  `;
+
+  // Attach button events
+  const copyBtn = msgDiv.querySelector(".btn-copy-chat");
+  if (copyBtn) {
+    copyBtn.addEventListener("click", () => {
+      navigator.clipboard.writeText(text);
+      copyBtn.innerText = "✓ COPIED";
+      setTimeout(() => { copyBtn.innerText = "📋 COPY"; }, 1500);
+    });
+  }
+
+  const speakBtn = msgDiv.querySelector(".btn-speak-chat");
+  if (speakBtn) {
+    speakBtn.addEventListener("click", async () => {
+      speakBtn.innerText = "SYNTHESIZING...";
+      try {
+        const res = await fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: text.slice(0, 300) })
+        });
+        const data = await res.json();
+        if (data.base64) {
+          playBase64Audio(data.base64, text.length, data.mime || "audio/wav", data.duration || 3.0);
+        }
+      } catch (e) {}
+      speakBtn.innerText = "🔊 SPEAK";
+    });
+  }
+
+  container.appendChild(msgDiv);
+  const body = document.getElementById("dedicatedChatBody");
+  if (body) {
+    body.scrollTop = body.scrollHeight;
+  }
+}
+
+// ----------------------------------------------------
+// COMMAND TRANSMISSION (DUAL-CHANNEL: WS + REST)
+// ----------------------------------------------------
+async function transmitCommand(text) {
+  text = text.trim();
+  if (!text) return;
+
+  playSound("blip");
+  appendLog("user", "SIR SHAKIL", text);
+  state.chatHistory.push({ role: "user", content: text });
+  
+  const cmdInput = document.getElementById("cmdInput");
+  if (cmdInput) cmdInput.value = "";
+  const inpDedicated = document.getElementById("inpDedicatedChat");
+  if (inpDedicated) inpDedicated.value = "";
+
+  // Append to dedicated chat view
+  appendDedicatedChatMessage("user", text);
+
+  // Eliminate double voice: Only send play_speaker=true if user explicitly chose PC hardware speaker mode!
+  const shouldPlaySpeaker = state.audioMode === "speaker";
+
+  // 1. Primary: WebSocket transmission
+  if (wsChat && wsChat.readyState === WebSocket.OPEN) {
+    try {
+      wsChat.send(JSON.stringify({
+        type: "message",
+        text: text,
+        voice_enabled: true,
+        play_speaker: shouldPlaySpeaker,
+        model: state.selectedModel,
+        workspace: state.currentWorkspace || "personal",
+        history: state.chatHistory
+      }));
+      return;
+    } catch (e) {
+      console.warn("WebSocket send error, falling back to REST:", e);
+    }
+  }
+
+  // 2. Reliable Fallback: Direct REST API (/api/chat)
+  try {
+    setAssistantStatus("thinking", "PROCESSING DIRECTIVE");
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: text,
+        voice_enabled: true,
+        play_speaker: shouldPlaySpeaker,
+        model: state.selectedModel,
+        workspace: state.currentWorkspace || "personal",
+        history: state.chatHistory
+      })
+    });
+    const data = await res.json();
+    if (data.response) {
+      appendLog("jarvis", "J.A.R.V.I.S.", data.response);
+      state.chatHistory.push({ role: "model", content: data.response });
+      appendDedicatedChatMessage("jarvis", data.response, state.selectedModel, state.currentThoughts ? state.currentThoughts.slice() : []);
+      state.currentThoughts = [];
+    }
+    if (data.audio_base64) {
+      playBase64Audio(data.audio_base64, (data.spoken_summary || data.response || "").length, data.mime || "audio/wav", data.duration || 3.0);
+    } else {
+      unlockMicAfterJarvisTurn();
+    }
+  } catch (err) {
+    console.error("Command transmission error:", err);
+    appendLog("warning", "ERROR", `Command delivery failed: ${err.message}`);
+    unlockMicAfterJarvisTurn();
+  }
+}
+
+// ----------------------------------------------------
+// REST ACTIONS & CONTROLS
+// ----------------------------------------------------
+async function triggerPcAction(action, params = {}) {
+  playSound("blip");
+  try {
+    const res = await fetch("/api/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, params })
+    });
+    const json = await res.json();
+    if (json.base64) {
+      // Screenshot preview
+      document.getElementById("screenPreviewImg").src = `data:image/png;base64,${json.base64}`;
+      document.getElementById("screenModal").classList.add("active");
+    }
+    return json;
+  } catch (e) {
+    console.error("Action failed:", e);
+  }
+}
+
+// ----------------------------------------------------
+// EVENT LISTENERS & INITIALIZATION
+// ----------------------------------------------------
+window.addEventListener("DOMContentLoaded", () => {
+  // Start Arc Canvas
+  drawArcReactor();
+
+  // Connect WebSockets
+  connectTelemetry();
+  connectChat();
+
+  // Clock
+  setInterval(() => {
+    const now = new Date();
+    document.getElementById("hudClock").innerText = now.toTimeString().split(" ")[0];
+    document.getElementById("hudDate").innerText = now.toDateString().toUpperCase();
+  }, 1000);
+
+  // Automatically unlock audio since WebView2 autoplay policy is bypassed
+  unlockAllAudioEngines();
+
+  // Global proactive audio unlock listeners on ANY user interaction
+  const unlockEvents = ["click", "keydown", "pointerdown", "touchstart"];
+  unlockEvents.forEach(evt => {
+    window.addEventListener(evt, () => {
+      unlockAllAudioEngines();
+      if (state.continuousVoice && !state.isListening && recognition) {
+        startVoiceListener();
+      }
+    }, { capture: true, passive: true });
+  });
+
+  // Test Voice Button
+  const btnTestVoice = document.getElementById("btnTestVoice");
+  if (btnTestVoice) {
+    btnTestVoice.addEventListener("click", async () => {
+      playSound("ack");
+      appendLog("info", "TEST", "Testing Neural Voice Link (PC speakers & HUD audio)...");
+      try {
+        const res = await fetch("/api/voice/test", { method: "POST" });
+        const data = await res.json();
+        if (data.base64) {
+          playBase64Audio(data.base64);
+        }
+      } catch(e) {
+        console.error("Voice test error:", e);
+      }
+    });
+  }
+
+  // Auto-start always-on listening if permitted
+  if (state.continuousVoice) {
+    setTimeout(startVoiceListener, 600);
+  }
+
+  // Play boot chime
+  setTimeout(() => { playSound("boot"); }, 500);
+
+  // Transmit Button & Enter Key
+  document.getElementById("btnSend").addEventListener("click", () => {
+    transmitCommand(document.getElementById("cmdInput").value);
+  });
+  document.getElementById("cmdInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      transmitCommand(e.target.value);
+    }
+  });
+
+  // Voice Toggle Button
+  document.getElementById("btnVoiceToggle").addEventListener("click", toggleVoiceListening);
+
+  // Always-On checkbox
+  document.getElementById("chkContinuousVoice").addEventListener("change", (e) => {
+    state.continuousVoice = e.target.checked;
+    if (state.continuousVoice && !state.isListening && recognition) {
+      startVoiceListener();
+    }
+  });
+
+  // Wake-word checkbox
+  document.getElementById("chkWakeWord").addEventListener("change", (e) => {
+    state.wakeWordEnabled = e.target.checked;
+  });
+
+  // Speech Accent & Language Selector
+  const selSpeechLang = document.getElementById("selSpeechLang");
+  if (selSpeechLang) {
+    selSpeechLang.value = state.speechLang;
+    selSpeechLang.addEventListener("change", (e) => {
+      state.speechLang = e.target.value;
+      localStorage.setItem("jarvis_speech_lang", state.speechLang);
+      if (recognition) {
+        recognition.lang = state.speechLang;
+        try { recognition.stop(); } catch(err){}
+        if (state.continuousVoice) {
+          setTimeout(startVoiceListener, 250);
+        }
+      }
+      appendLog("info", "SPEECH", `Speech accent calibrated to ${state.speechLang}. Acoustic model synced.`);
+    });
+  }
+
+  // Speaker Output Route Selector
+  const selAudioMode = document.getElementById("selAudioMode");
+  if (selAudioMode) {
+    selAudioMode.value = state.audioMode;
+    selAudioMode.addEventListener("change", (e) => {
+      state.audioMode = e.target.value;
+      localStorage.setItem("jarvis_audio_mode", state.audioMode);
+      unlockAllAudioEngines();
+      playSound("ack");
+      appendLog("info", "SPEAKER ROUTE", `Audio output set to: ${e.target.options[e.target.selectedIndex].text}`);
+    });
+  }
+
+  // Model Selectors Synchronization (Main HUD + Dedicated Chat)
+  const selMainModel = document.getElementById("selMainModel");
+  const selDedicatedChatModel = document.getElementById("selDedicatedChatModel");
+
+  function syncModelSelection(val) {
+    state.selectedModel = val;
+    localStorage.setItem("jarvis_selected_model", val);
+    if (selMainModel) selMainModel.value = val;
+    if (selDedicatedChatModel) selDedicatedChatModel.value = val;
+    const optText = (selMainModel && selMainModel.options[selMainModel.selectedIndex]) 
+      ? selMainModel.options[selMainModel.selectedIndex].text 
+      : val;
+    appendLog("info", "AI BRAIN", `Active neural model calibrated to: ${optText}`);
+    playSound("ack");
+  }
+
+  if (selMainModel) {
+    selMainModel.value = state.selectedModel;
+    selMainModel.addEventListener("change", (e) => syncModelSelection(e.target.value));
+  }
+  if (selDedicatedChatModel) {
+    selDedicatedChatModel.value = state.selectedModel;
+    selDedicatedChatModel.addEventListener("change", (e) => syncModelSelection(e.target.value));
+  }
+
+  // Dedicated Chat Modal Triggers
+  const dedicatedChatModal = document.getElementById("dedicatedChatModal");
+  const btnOpenDedicatedChat = document.getElementById("btnOpenDedicatedChat");
+  const btnCloseDedicatedChat = document.getElementById("btnCloseDedicatedChat");
+  const btnClearDedicatedChat = document.getElementById("btnClearDedicatedChat");
+  const btnDedicatedChatSend = document.getElementById("btnDedicatedChatSend");
+  const inpDedicatedChat = document.getElementById("inpDedicatedChat");
+  const btnDedicatedChatMic = document.getElementById("btnDedicatedChatMic");
+
+  if (btnOpenDedicatedChat && dedicatedChatModal) {
+    btnOpenDedicatedChat.addEventListener("click", () => {
+      dedicatedChatModal.classList.add("active");
+      playSound("blip");
+      if (inpDedicatedChat) inpDedicatedChat.focus();
+    });
+  }
+
+  if (btnCloseDedicatedChat && dedicatedChatModal) {
+    btnCloseDedicatedChat.addEventListener("click", () => {
+      dedicatedChatModal.classList.remove("active");
+    });
+  }
+
+  if (btnClearDedicatedChat) {
+    btnClearDedicatedChat.addEventListener("click", () => {
+      const container = document.getElementById("dedicatedChatMessages");
+      if (container) container.innerHTML = "";
+      state.chatHistory = [];
+      playSound("blip");
+      appendLog("info", "CHAT", "Dedicated chat history cleared.");
+    });
+  }
+
+  if (btnDedicatedChatSend && inpDedicatedChat) {
+    btnDedicatedChatSend.addEventListener("click", () => {
+      const text = inpDedicatedChat.value.trim();
+      if (text) transmitCommand(text);
+    });
+  }
+
+  if (inpDedicatedChat) {
+    inpDedicatedChat.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        const text = inpDedicatedChat.value.trim();
+        if (text) transmitCommand(text);
+      }
+    });
+  }
+
+  if (btnDedicatedChatMic) {
+    btnDedicatedChatMic.addEventListener("click", () => {
+      toggleVoiceListening();
+      btnDedicatedChatMic.classList.toggle("active", state.isListening);
+    });
+  }
+
+  // Quick Chat Directives Toolbar
+  document.querySelectorAll("[data-chat-cmd]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const cmd = btn.getAttribute("data-chat-cmd");
+      if (cmd) transmitCommand(cmd);
+    });
+  });
+
+  // Quick Application Dispatch buttons
+  document.querySelectorAll(".quick-btn[data-action='launch']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const target = btn.getAttribute("data-target");
+      triggerPcAction("launch", { app_name: target });
+      appendLog("tool", "ACTION", `Initiated launch for '${target}' via quick dock.`);
+    });
+  });
+
+  // Master Volume Slider
+  const volSlider = document.getElementById("volumeSlider");
+  volSlider.addEventListener("input", (e) => {
+    const val = e.target.value;
+    document.getElementById("volumeDisplay").innerText = `${val}%`;
+  });
+  volSlider.addEventListener("change", (e) => {
+    const val = e.target.value;
+    triggerPcAction("set_volume", { percent: parseInt(val) });
+  });
+
+  // Hardware buttons
+  document.getElementById("btnMuteToggle").addEventListener("click", () => {
+    triggerPcAction("mute", {});
+  });
+  document.getElementById("btnMediaPlay").addEventListener("click", () => {
+    triggerPcAction("media", { media_action: "play_pause" });
+  });
+  document.getElementById("btnScreenshot").addEventListener("click", () => {
+    triggerPcAction("screenshot", {});
+  });
+  document.getElementById("btnLockPc").addEventListener("click", () => {
+    if (confirm("Sir Shakil, do you wish to secure and lock this workstation now?")) {
+      triggerPcAction("lock", {});
+    }
+  });
+
+  // Suggestion Chips
+  document.querySelectorAll(".chip-btn").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const cmd = chip.getAttribute("data-cmd");
+      transmitCommand(cmd);
+    });
+  });
+
+  // Fullscreen Button
+  document.getElementById("btnFullscreen").addEventListener("click", () => {
+    playSound("blip");
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => alert(err.message));
+    } else {
+      document.exitFullscreen();
+    }
+  });
+
+  // Diagnostics Button
+  document.getElementById("btnDiagnostics").addEventListener("click", () => {
+    transmitCommand("Jarvis, perform full system diagnostics and report status");
+  });
+
+  // Config Modal
+  const cfgModal = document.getElementById("configModal");
+  document.getElementById("btnSettings").addEventListener("click", async () => {
+    playSound("blip");
+    cfgModal.classList.add("active");
+    try {
+      const res = await fetch("/api/settings");
+      const data = await res.json();
+      if (data.has_api_key) {
+        document.getElementById("cfgApiKey").placeholder = `Configured (${data.api_key_masked})`;
+      }
+      const select = document.getElementById("cfgVoiceSelect");
+      select.innerHTML = "";
+      data.voices.forEach((v) => {
+        const opt = document.createElement("option");
+        opt.value = v.id;
+        opt.innerText = v.name;
+        if (v.id === data.default_voice) opt.selected = true;
+        select.appendChild(opt);
+      });
+    } catch(e) { console.error(e); }
+  });
+
+  document.getElementById("btnCloseConfig").addEventListener("click", () => {
+    cfgModal.classList.remove("active");
+  });
+
+  document.getElementById("btnSaveConfig").addEventListener("click", async () => {
+    playSound("ack");
+    const key = document.getElementById("cfgApiKey").value;
+    const voice = document.getElementById("cfgVoiceSelect").value;
+    state.soundFxEnabled = document.getElementById("cfgSoundFx").checked;
+
+    await fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: key, voice: voice })
+    });
+
+    document.getElementById("badgeVoice").innerHTML = `<span class="dot"></span> VOICE: ${voice.split("-")[2] || "GB"}`;
+    cfgModal.classList.remove("active");
+    appendLog("info", "SYSTEM", "Configuration protocols committed successfully, Sir Shakil.");
+  });
+
+  // Screenshot Modal Close
+  document.getElementById("btnCloseScreen").addEventListener("click", () => {
+    document.getElementById("screenModal").classList.remove("active");
+  });
+
+  // Memory Vault
+  const memModal = document.getElementById("memoryModal");
+  async function loadMemoryVault() {
+    try {
+      const res = await fetch("/api/memory");
+      const data = await res.json();
+      document.getElementById("factsCount").innerText = data.facts.length;
+      document.getElementById("knowledgeCount").innerText = data.knowledge.length;
+
+      const factList = document.getElementById("memFactList");
+      factList.innerHTML = "";
+      data.facts.forEach((f) => {
+        const item = document.createElement("div");
+        item.className = "fact-item";
+        item.innerHTML = `
+          <div class="fact-content">
+            <span class="fact-cat">[${f.category.toUpperCase()}]</span>
+            <span class="fact-key">${escapeHtml(f.key)}</span>
+            <span class="fact-val">${escapeHtml(f.value)}</span>
+          </div>
+          <button class="fact-delete-btn" data-id="${f.id}">PURGE</button>
+        `;
+        factList.appendChild(item);
+      });
+
+      // Delete fact handlers
+      factList.querySelectorAll(".fact-delete-btn").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          const id = e.target.getAttribute("data-id");
+          await fetch(`/api/memory/fact/${id}`, { method: "DELETE" });
+          loadMemoryVault();
+        });
+      });
+
+      // Knowledge nodes
+      const kList = document.getElementById("memKnowledgeList");
+      kList.innerHTML = "";
+      data.knowledge.forEach((k) => {
+        const item = document.createElement("div");
+        item.className = "knowledge-item";
+        const dateStr = k.created_at ? new Date(k.created_at).toLocaleDateString() : "";
+        item.innerHTML = `
+          <div class="knowledge-title-row">
+            <span class="knowledge-title">${escapeHtml(k.topic)}</span>
+            <span class="knowledge-date">${dateStr} · [${escapeHtml(k.category)}]</span>
+          </div>
+          <div class="knowledge-summary">${escapeHtml(k.summary)}</div>
+          ${k.details ? `<div class="knowledge-summary" style="margin-top:4px; opacity:0.85; font-size:12px;">${escapeHtml(k.details)}</div>` : ''}
+          <div class="knowledge-tags">Tags: ${escapeHtml(k.tags || "research")}</div>
+        `;
+        kList.appendChild(item);
+      });
+
+    } catch(e) {
+      console.error("Memory load failed:", e);
+    }
+  }
+
+  document.getElementById("btnMemoryVault").addEventListener("click", () => {
+    playSound("blip");
+    loadMemoryVault();
+    memModal.classList.add("active");
+  });
+
+  document.getElementById("btnCloseMemory").addEventListener("click", () => {
+    memModal.classList.remove("active");
+  });
+
+  // Memory Tabs switching
+  document.querySelectorAll(".mem-tab-btn").forEach((tabBtn) => {
+    tabBtn.addEventListener("click", () => {
+      playSound("blip");
+      document.querySelectorAll(".mem-tab-btn").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".tab-pane").forEach((p) => p.classList.remove("active"));
+      tabBtn.classList.add("active");
+      const target = tabBtn.getAttribute("data-tab");
+      document.getElementById(target).classList.add("active");
+    });
+  });
+
+  // Trigger Research Button in Modal
+  document.getElementById("btnTriggerResearch").addEventListener("click", async () => {
+    const topic = document.getElementById("inpResearchTopic").value.trim();
+    playSound("ack");
+    document.getElementById("btnTriggerResearch").innerText = "RESEARCHING...";
+    document.getElementById("btnTriggerResearch").disabled = true;
+
+    try {
+      await fetch("/api/research/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: topic })
+      });
+      document.getElementById("inpResearchTopic").value = "";
+      await loadMemoryVault();
+    } catch(e) {
+      console.error("Research failed:", e);
+    } finally {
+      document.getElementById("btnTriggerResearch").innerText = "RESEARCH NOW";
+      document.getElementById("btnTriggerResearch").disabled = false;
+    }
+  });
+
+  // Add Fact Button in Modal
+  document.getElementById("btnSaveNewFact").addEventListener("click", async () => {
+    const cat = document.getElementById("newFactCategory").value;
+    const key = document.getElementById("newFactKey").value.trim();
+    const val = document.getElementById("newFactValue").value.trim();
+    if (!key || !val) return;
+
+    playSound("ack");
+    await fetch("/api/memory/fact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ category: cat, key: key, value: val })
+    });
+
+    document.getElementById("newFactKey").value = "";
+    document.getElementById("newFactValue").value = "";
+    await loadMemoryVault();
+
+    // Switch back to facts tab
+    document.querySelector(".mem-tab-btn[data-tab='tabFacts']").click();
+  });
+
+  // Neural RAG Search in Modal
+  const btnExecRag = document.getElementById("btnExecuteRagSearch");
+  const inpRag = document.getElementById("inpRagQuery");
+  const ragDeck = document.getElementById("ragResultsDeck");
+
+  async function executeRagModalSearch() {
+    const q = inpRag ? inpRag.value.trim() : "";
+    if (!q) return;
+
+    playSound("blip");
+    btnExecRag.innerText = "QUERYING RAG...";
+    btnExecRag.disabled = true;
+
+    try {
+      const res = await fetch("/api/rag/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: q })
+      });
+      const data = await res.json();
+
+      let html = `<div style="color:#00e5ff; font-weight:700; margin-bottom:8px;">🔍 RAG RECALL DOSSIER FOR: '${escapeHtml(q)}'</div>`;
+
+      if (data.dialogue && data.dialogue.length > 0) {
+        html += `<strong style="color:#38ef7d;">Relevant Past Conversation Threads (${data.dialogue.length}):</strong><br>`;
+        data.dialogue.forEach(d => {
+          html += `<div style="margin:4px 0 8px 8px; padding-left:6px; border-left:2px solid #38ef7d;">
+            <span style="opacity:0.7; font-size:10px;">${escapeHtml(d.date)} · ${escapeHtml(d.role)}:</span><br>
+            <span>${escapeHtml(d.content)}</span>
+          </div>`;
+        });
+      }
+
+      if (data.knowledge && data.knowledge.length > 0) {
+        html += `<strong style="color:#ffaa00;">Relevant Knowledge Vault Nodes (${data.knowledge.length}):</strong><br>`;
+        data.knowledge.forEach(k => {
+          html += `<div style="margin:4px 0 8px 8px; padding-left:6px; border-left:2px solid #ffaa00;">
+            <span style="font-weight:700; color:#ffaa00;">${escapeHtml(k.topic)}</span> <span style="opacity:0.7; font-size:10px;">[${escapeHtml(k.category)}]</span><br>
+            <span>${escapeHtml(k.summary)}</span>
+          </div>`;
+        });
+      }
+
+      if (data.facts && data.facts.length > 0) {
+        html += `<strong style="color:#00e5ff;">Matched User Facts (${data.facts.length}):</strong><br>`;
+        data.facts.forEach(f => {
+          html += `<div style="margin:4px 0 8px 8px; padding-left:6px; border-left:2px solid #00e5ff;">
+            <span style="font-weight:700;">${escapeHtml(f.key)}</span>: ${escapeHtml(f.value)}
+          </div>`;
+        });
+      }
+
+      if ((!data.dialogue || data.dialogue.length === 0) &&
+          (!data.knowledge || data.knowledge.length === 0) &&
+          (!data.facts || data.facts.length === 0)) {
+        html += `<span style="color:#aaa;">No direct indexed matches found for '${escapeHtml(q)}'. Jarvis will rely on real-time neural reasoning.</span>`;
+      }
+
+      ragDeck.innerHTML = html;
+      playSound("ack");
+    } catch (err) {
+      ragDeck.innerHTML = `<span style="color:#ff3366;">RAG query failed: ${escapeHtml(err.message)}</span>`;
+    } finally {
+      btnExecRag.innerText = "RECALL CONTEXT";
+      btnExecRag.disabled = false;
+    }
+  }
+
+  if (btnExecRag) {
+    btnExecRag.addEventListener("click", executeRagModalSearch);
+  }
+  if (inpRag) {
+    inpRag.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        executeRagModalSearch();
+      }
+    });
+  }
+
+  // ----------------------------------------------------
+  // OMNIROUTE MODEL GATEWAY STATUS
+  // ----------------------------------------------------
+  async function checkOmnirouteStatus() {
+    try {
+      const res = await fetch("/api/omniroute/status");
+      const data = await res.json();
+      const badge = document.getElementById("badgeOmniroute");
+      if (badge && data.active) {
+        badge.innerHTML = `<span class="dot" style="background:#76ff03; box-shadow:0 0 8px #76ff03;"></span> OMNIROUTE: ${data.total_models || '1,189+'} MODELS`;
+        badge.title = `OmniRoute Online (${(data.active_providers || []).length} active providers, ${data.total_models} free models linked)`;
+      }
+    } catch(e) {
+      console.warn("OmniRoute status check failed", e);
+    }
+  }
+  checkOmnirouteStatus();
+
+  // ----------------------------------------------------
+  // MARKETING HUB & BROWSER CONTROLLER LOGIC
+  // ----------------------------------------------------
+  const mktModal = document.getElementById("marketingModal");
+  const openMarketingHub = (tabId = "tabEventbrite") => {
+    playSound("blip");
+    if (mktModal) mktModal.classList.add("active");
+    if (tabId) {
+      const btn = document.querySelector(`.marketing-tab-btn[data-tab='${tabId}']`);
+      if (btn) btn.click();
+    }
+  };
+
+  const btnMktHub = document.getElementById("btnMarketingHub");
+  if (btnMktHub) btnMktHub.addEventListener("click", () => openMarketingHub("tabEventbrite"));
+
+  const btnBrowserResearchHdr = document.getElementById("btnBrowserResearchHeader");
+  if (btnBrowserResearchHdr) btnBrowserResearchHdr.addEventListener("click", () => openMarketingHub("tabBrowserResearch"));
+
+  const btnCloseMkt = document.getElementById("btnCloseMarketing");
+  if (btnCloseMkt) btnCloseMkt.addEventListener("click", () => mktModal.classList.remove("active"));
+  
+  const btnQuickMkt = document.getElementById("btnQuickMarketingHub");
+  if (btnQuickMkt) btnQuickMkt.addEventListener("click", () => openMarketingHub("tabCampaigns"));
+
+  const btnQuickEb = document.getElementById("btnQuickEventbrite");
+  if (btnQuickEb) btnQuickEb.addEventListener("click", () => openMarketingHub("tabEventbrite"));
+
+  const btnQuickEm = document.getElementById("btnQuickCheckEmails");
+  if (btnQuickEm) btnQuickEm.addEventListener("click", () => {
+    openMarketingHub("tabEmailBrowser");
+    const scanBtn = document.getElementById("btnScanInboxNow");
+    if (scanBtn) scanBtn.click();
+  });
+
+  // Marketing Tabs
+  document.querySelectorAll(".marketing-tab-btn").forEach((tabBtn) => {
+    tabBtn.addEventListener("click", () => {
+      playSound("blip");
+      document.querySelectorAll(".marketing-tab-btn").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".mkt-tab-pane").forEach((p) => p.classList.remove("active"));
+      tabBtn.classList.add("active");
+      const target = tabBtn.getAttribute("data-tab");
+      const pane = document.getElementById(target);
+      if (pane) pane.classList.add("active");
+    });
+  });
+
+  // Eventbrite SEO Generator
+  const btnGenEb = document.getElementById("btnGenEventbrite");
+  if (btnGenEb) {
+    btnGenEb.addEventListener("click", async () => {
+      const topic = document.getElementById("ebTopic").value.trim();
+      const audience = document.getElementById("ebAudience").value.trim();
+      const loc = document.getElementById("ebLocation").value.trim();
+      if (!topic) {
+        alert("Sir Shakil, please provide an event topic or title.");
+        return;
+      }
+      playSound("ack");
+      const outBox = document.getElementById("ebOutput");
+      btnGenEb.innerText = "OPTIMIZING EVENTBRITE SEO...";
+      btnGenEb.disabled = true;
+      outBox.style.display = "block";
+      outBox.innerHTML = "<span style='color:#00e5ff;'>Analyzing high-search Eventbrite keywords, crafting conversion copy, and structuring ticket tiers...</span>";
+
+      try {
+        const res = await fetch("/api/marketing/eventbrite", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ topic: topic, target_audience: audience, location: loc })
+        });
+        const data = await res.json();
+        
+        let html = `<h4>1. HIGH-SEARCH SEO TITLES</h4>`;
+        if (Array.isArray(data.seo_titles)) {
+          data.seo_titles.forEach((t) => { html += `<div>• ${escapeHtml(t)}</div>`; });
+        } else if (data.seo_title) {
+          html += `<div>• ${escapeHtml(data.seo_title)}</div>`;
+        }
+        
+        html += `<h4>2. 140-CHARACTER SEARCH SUMMARY</h4><div>${escapeHtml(data.event_summary || '')}</div>`;
+        
+        const tags = data.tags || data.seo_tags || [];
+        html += `<h4>3. EVENTBRITE ALGORITHM TAGS</h4><div style="color:#76ff03;">${tags.join(" · ")}</div>`;
+        
+        html += `<h4>4. HIGH-CONVERTING HTML DESCRIPTION</h4><div style="background:rgba(0,0,0,0.5); padding:8px; border:1px solid rgba(0,240,255,0.2); max-height:150px; overflow-y:auto; font-size:11px;">${escapeHtml(data.html_description || '')}</div>`;
+        
+        html += `<h4>5. PROFIT-MAXIMIZING TICKET TIERS</h4>`;
+        (data.ticket_tiers || []).forEach(tier => {
+          html += `<div><strong>${escapeHtml(tier.name)} (${escapeHtml(tier.price)})</strong>: ${escapeHtml(tier.description || '')}</div>`;
+        });
+        
+        html += `<h4>6. EARLY-BIRD PROMOTION STRATEGY</h4>`;
+        if (Array.isArray(data.promo_strategy)) {
+          data.promo_strategy.forEach(p => {
+            html += `<div>Code: <code>${escapeHtml(p.code)}</code> (${escapeHtml(p.discount)}) — ${escapeHtml(p.trigger)}</div>`;
+          });
+        } else if (data.promo_strategy) {
+          html += `<div>Code: <code>${escapeHtml(data.promo_strategy.discount_code || 'VIPSHAKIL')}</code> (${escapeHtml(data.promo_strategy.discount_percent || '20% OFF')})<br>${escapeHtml(data.promo_strategy.urgency_trigger || '')}</div>`;
+        }
+
+        outBox.innerHTML = html;
+        appendLog("jarvis", "MARKETING", `Eventbrite SEO optimization package generated for '${topic}'.`);
+      } catch(err) {
+        outBox.innerHTML = `<span style="color:#ff3366;">Error optimizing listing: ${escapeHtml(err.message)}</span>`;
+      } finally {
+        btnGenEb.innerText = "GENERATE SEO-OPTIMIZED EVENTBRITE PACK";
+        btnGenEb.disabled = false;
+      }
+    });
+  }
+
+  // Multi-Channel Campaign Generator
+  const btnGenCamp = document.getElementById("btnGenCampaign");
+  if (btnGenCamp) {
+    btnGenCamp.addEventListener("click", async () => {
+      const product = document.getElementById("campProduct").value.trim();
+      const valueProp = document.getElementById("campValue").value.trim();
+      const price = document.getElementById("campPrice").value.trim();
+      const cType = document.getElementById("campType").value;
+      if (!product) {
+        alert("Sir Shakil, please provide the offer or product name.");
+        return;
+      }
+      playSound("ack");
+      const outBox = document.getElementById("campOutput");
+      btnGenCamp.innerText = "GENERATING CAMPAIGN ARSENAL...";
+      btnGenCamp.disabled = true;
+      outBox.style.display = "block";
+      outBox.innerHTML = "<span style='color:#00e5ff;'>Formulating multi-channel copy across Email, SMS, Google Ads, and Meta Ads...</span>";
+
+      try {
+        const res = await fetch("/api/marketing/campaign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ product_name: product, value_prop: valueProp, price_point: price, type: cType })
+        });
+        const data = await res.json();
+        let html = "";
+        
+        if (data.email) {
+          html += `<h4>📧 EMAIL CONVERSION SEQUENCE</h4>`;
+          (data.email.sequence || []).forEach(em => {
+            const subj = em.subject_lines ? em.subject_lines[0] : (em.subjects ? em.subjects[0] : '');
+            html += `<div style="margin-bottom:8px; border-left:2px solid #00e5ff; padding-left:8px;"><strong>Email #${em.step || em.email_num}: ${escapeHtml(em.purpose || em.type || '')}</strong><br><em>Subject: ${escapeHtml(subj)}</em><br><span style="opacity:0.85;">${escapeHtml(em.preview_text || em.body_preview || '')}</span></div>`;
+          });
+        }
+        
+        if (data.sms) {
+          html += `<h4>📱 SMS URGENCY BLASTS</h4>`;
+          const smsList = data.sms.variants || data.sms.sms_campaigns || [];
+          smsList.forEach(s => {
+            const timing = s.type || s.timing || 'Alert';
+            html += `<div style="margin-bottom:6px;"><strong>[${escapeHtml(timing)}]</strong>: ${escapeHtml(s.text)}</div>`;
+          });
+        }
+
+        if (data.google_ads) {
+          html += `<h4>🎯 GOOGLE ADS ASSETS</h4>`;
+          html += `<div><strong>Headlines:</strong> ${(data.google_ads.headlines || []).slice(0, 5).join(" | ")}</div>`;
+          html += `<div><strong>Descriptions:</strong> ${(data.google_ads.descriptions || []).join(" ")}</div>`;
+        }
+
+        if (data.meta_ads) {
+          html += `<h4>📱 META / INSTAGRAM ADS</h4>`;
+          const creatives = data.meta_ads.angles || data.meta_ads.ad_creatives || data.meta_ads.creatives || [];
+          creatives.forEach(c => {
+            html += `<div style="margin-bottom:6px; border-left:2px solid #ff0055; padding-left:8px;"><strong>Angle: ${escapeHtml(c.angle || c.angle_name || '')}</strong><br><em>Headline: ${escapeHtml(c.headline || '')} (${escapeHtml(c.cta_button || 'Learn More')})</em><br>${escapeHtml(c.primary_text || '')}</div>`;
+          });
+        }
+
+        outBox.innerHTML = html;
+        appendLog("jarvis", "MARKETING", `Multi-channel campaigns deployed for '${product}'.`);
+      } catch(err) {
+        outBox.innerHTML = `<span style="color:#ff3366;">Error generating campaigns: ${escapeHtml(err.message)}</span>`;
+      } finally {
+        btnGenCamp.innerText = "DEPLOY MARKETING COPY ENGINE";
+        btnGenCamp.disabled = false;
+      }
+    });
+  }
+
+  // Dedicated Browser Controls
+  const launchJarvisChrome = async (targetUrl = "https://mail.google.com") => {
+    playSound("ack");
+    try {
+      await fetch("/api/browser/launch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: targetUrl })
+      });
+      appendLog("tool", "BROWSER", `Dedicated Chrome Profile launched at ${targetUrl}.`);
+    } catch(e) {
+      console.error(e);
+    }
+  };
+
+  const btnJarvisBrowser = document.getElementById("btnJarvisBrowser");
+  if (btnJarvisBrowser) btnJarvisBrowser.addEventListener("click", () => launchJarvisChrome("https://mail.google.com"));
+
+  const btnQuickChrome = document.getElementById("btnQuickJarvisChrome");
+  if (btnQuickChrome) btnQuickChrome.addEventListener("click", () => launchJarvisChrome("https://mail.google.com"));
+
+  const btnLaunchDed = document.getElementById("btnLaunchDedicatedChrome");
+  if (btnLaunchDed) btnLaunchDed.addEventListener("click", () => launchJarvisChrome("https://mail.google.com"));
+
+  const btnOpenEbDash = document.getElementById("btnOpenEventbriteDash");
+  if (btnOpenEbDash) btnOpenEbDash.addEventListener("click", () => launchJarvisChrome("https://www.eventbrite.com/signin/"));
+
+  const btnOpenMetaDash = document.getElementById("btnOpenMetaAdsDash");
+  if (btnOpenMetaDash) btnOpenMetaDash.addEventListener("click", () => launchJarvisChrome("https://adsmanager.facebook.com"));
+
+  // Inbox Scan
+  const btnScanInbox = document.getElementById("btnScanInboxNow");
+  if (btnScanInbox) {
+    btnScanInbox.addEventListener("click", async () => {
+      const resBox = document.getElementById("emailScanResults");
+      resBox.innerHTML = "<span style='color:#00e5ff;'>Inspecting dedicated Chrome profile sessions for unread emails...</span>";
+      playSound("blip");
+      try {
+        const res = await fetch("/api/browser/emails");
+        const data = await res.json();
+        
+        let html = `<strong>Status:</strong> ${data.status} | <strong>Unread Count:</strong> ${data.unread_count || 0}<br>`;
+        html += `<strong>Executive Brief:</strong> ${escapeHtml(data.executive_brief || data.message)}<br><br>`;
+        
+        if (data.emails && data.emails.length > 0) {
+          html += `<strong>Detected Emails:</strong><br>`;
+          data.emails.forEach(e => {
+            html += `• <strong>${escapeHtml(e.sender)}:</strong> ${escapeHtml(e.subject)} — <em>${escapeHtml(e.snippet)}</em><br>`;
+          });
+        } else {
+          html += `<em>(If you have not logged in yet, click 'LAUNCH DEDICATED CHROME' above, sign into your email account once, and subsequent checks will read your inbox automatically.)</em>`;
+        }
+        resBox.innerHTML = html;
+        appendLog("jarvis", "EMAIL BRIEF", data.executive_brief || data.message);
+      } catch(e) {
+        resBox.innerHTML = `<span style="color:#ff3366;">Failed scanning inbox: ${escapeHtml(e.message)}</span>`;
+      }
+    });
+  }
+
+  // Email Confirmation Gate
+  const btnConfirmEmail = document.getElementById("btnConfirmSendEmail");
+  if (btnConfirmEmail) {
+    btnConfirmEmail.addEventListener("click", async () => {
+      playSound("ack");
+      try {
+        const res = await fetch("/api/browser/email/reply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "confirm_send" })
+        });
+        const data = await res.json();
+        alert("Directives executed: " + data.message);
+        document.getElementById("emailDraftStageBox").style.display = "none";
+        appendLog("tool", "EMAIL TRANSMIT", data.message);
+      } catch(e) {
+        alert("Transmission failed: " + e.message);
+      }
+    });
+  }
+
+  const btnCancelEmail = document.getElementById("btnCancelSendEmail");
+  if (btnCancelEmail) {
+    btnCancelEmail.addEventListener("click", () => {
+      playSound("blip");
+      document.getElementById("emailDraftStageBox").style.display = "none";
+      appendLog("system", "CANCEL", "Draft transmission aborted by Sir Shakil.");
+    });
+  }
+
+  // Autonomous Browser Online Research Logic
+  const btnOpenGoogleJarvis = document.getElementById("btnOpenGoogleJarvis");
+  if (btnOpenGoogleJarvis) {
+    btnOpenGoogleJarvis.addEventListener("click", () => launchJarvisChrome("https://www.google.com"));
+  }
+
+  const btnCaptureBrowser = document.getElementById("btnCaptureBrowserScreen");
+  if (btnCaptureBrowser) {
+    btnCaptureBrowser.addEventListener("click", async () => {
+      playSound("ack");
+      appendLog("info", "BROWSER", "Capturing live Chrome view from 'Jarvis' profile...");
+      try {
+        const res = await fetch("/api/browser/screenshot");
+        const data = await res.json();
+        if (data.success && data.base64) {
+          const previewImg = document.getElementById("screenPreviewImg");
+          const screenModal = document.getElementById("screenModal");
+          if (previewImg && screenModal) {
+            previewImg.src = `data:image/png;base64,${data.base64}`;
+            screenModal.classList.add("active");
+          }
+          appendLog("tool", "SCREENSHOT", `Captured live view of: ${data.title || data.url}`);
+        } else {
+          alert("Capture failed: " + (data.error || "Browser tab unavailable"));
+        }
+      } catch(err) {
+        console.error("Screenshot error:", err);
+      }
+    });
+  }
+
+  const btnExecResearch = document.getElementById("btnExecBrowserResearch");
+  if (btnExecResearch) {
+    btnExecResearch.addEventListener("click", async () => {
+      const topic = document.getElementById("txtResearchTopic").value.trim();
+      const mode = document.getElementById("selResearchMode").value;
+      const outDeck = document.getElementById("researchOutputDeck");
+
+      if (!topic) {
+        alert("Please enter a research topic, market niche, or URL, Sir Shakil.");
+        return;
+      }
+
+      playSound("ack");
+      btnExecResearch.innerText = "DEPLOYING RESEARCH MATRIX...";
+      btnExecResearch.disabled = true;
+      outDeck.innerHTML = `<span style="color:#00e5ff;">Deploying dedicated Chrome profile ('Jarvis') across live web sources for '${escapeHtml(topic)}'...</span>`;
+      appendLog("jarvis", "RESEARCH", `Initiated live browser research for '${topic}' via profile 'Jarvis'.`);
+
+      try {
+        let endpoint = "/api/browser/research";
+        let payload = { topic: topic };
+
+        if (mode === "search_only") {
+          endpoint = "/api/browser/search";
+          payload = { query: topic };
+        } else if (mode === "browse_url") {
+          endpoint = "/api/browser/browse";
+          payload = { url: topic };
+        }
+
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        let html = "";
+        if (mode === "deep") {
+          html += `<div style="color:#00e5ff; font-weight:700; margin-bottom:8px;">EXECUTIVE INTELLIGENCE DOSSIER: ${escapeHtml(data.topic || topic)}</div>`;
+          html += `<strong>Executive Briefing:</strong><br>${escapeHtml(data.summary || '')}<br><br>`;
+          if (data.monetization) {
+            html += `<strong style="color:#38ef7d;">Wealth & Monetization Vector:</strong><br>${escapeHtml(data.monetization)}<br><br>`;
+          }
+          if (data.technical_roadmap) {
+            html += `<strong style="color:#ffaa00;">Technical Implementation Roadmap:</strong><br>${escapeHtml(data.technical_roadmap)}<br><br>`;
+          }
+          if (data.discoveries && data.discoveries.length > 0) {
+            html += `<strong>Key Discoveries:</strong><br>`;
+            data.discoveries.forEach(d => {
+              html += `• ${escapeHtml(d)}<br>`;
+            });
+          }
+          if (data.stats) {
+            html += `<br><div style="font-size:11px; color:#ffaa00; border-top:1px dashed rgba(255,170,0,0.3); padding-top:6px;">⚡ COGNITIVE LEVEL UP: EVOLUTION LEVEL ${data.stats.level} (${data.stats.knowledge_nodes} NODES CATALOGED IN MEMORY VAULT)</div>`;
+          }
+          appendLog("jarvis", "INTEL DOSSIER", data.summary || "Online research cycle completed.");
+        } else if (mode === "search_only") {
+          html += `<strong>Query:</strong> ${escapeHtml(data.query)} | <strong>Found:</strong> ${data.results ? data.results.length : 0} results<br><br>`;
+          (data.results || []).forEach(r => {
+            html += `• <a href="${escapeHtml(r.url)}" target="_blank" style="color:#00e5ff; text-decoration:none;"><strong>${escapeHtml(r.title)}</strong></a><br><em>${escapeHtml(r.snippet)}</em><br><br>`;
+          });
+        } else if (mode === "browse_url") {
+          html += `<strong>Title:</strong> ${escapeHtml(data.title || '')}<br>`;
+          html += `<strong>URL:</strong> <a href="${escapeHtml(data.url)}" target="_blank" style="color:#00e5ff;">${escapeHtml(data.url)}</a><br><br>`;
+          if (data.headings && data.headings.length > 0) {
+            html += `<strong>Key Headings:</strong> ${escapeHtml(data.headings.join(' · '))}<br><br>`;
+          }
+          html += `<strong>Extracted Content:</strong><br><pre style="white-space:pre-wrap; font-family:var(--font-mono); font-size:11px; color:#b2ebf2;">${escapeHtml(data.body || '')}</pre>`;
+        }
+
+        outDeck.innerHTML = html;
+        playSound("blip");
+      } catch(err) {
+        outDeck.innerHTML = `<span style="color:#ff3366;">Research execution failed: ${escapeHtml(err.message)}</span>`;
+      } finally {
+        btnExecResearch.innerText = "DEPLOY CHROME RESEARCH AGENT";
+        btnExecResearch.disabled = false;
+      }
+    });
+  }
+
+  // ====================================================
+  // MARK XVI: EXECUTIVE OS CONTROLS & NATIVE DESKTOP INTEGRATION
+  // ====================================================
+
+  // 1. Emergency Abort & Instant Cancellation (<100ms)
+  window.executeEmergencyStop = async function() {
+    console.log("[JARVIS] Emergency Hard Abort Activated!");
+    // Audio kill
+    if (state.activeAudio) {
+      try {
+        state.activeAudio.pause();
+        state.activeAudio.currentTime = 0;
+      } catch(e) {}
+      state.activeAudio = null;
+    }
+    if (window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch(e) {}
+    }
+    unlockMicAfterJarvisTurn();
+    setAssistantStatus("idle", "ABORTED BY SIR SHAKIL");
+    appendLog("warning", "EMERGENCY ABORT", "Active directive, tasks, and speech purged (<100ms).");
+
+    // Inform WebSocket
+    if (wsChat && wsChat.readyState === WebSocket.OPEN) {
+      try { wsChat.send(JSON.stringify({ type: "cancel" })); } catch(e) {}
+    }
+
+    // Call Native PyWebView bridge if present
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.emergency_cancel) {
+      try { window.pywebview.api.emergency_cancel(); } catch(e) {}
+    }
+
+    // REST fallback
+    try {
+      fetch("/api/conversation/cancel", { method: "POST" });
+    } catch(e) {}
+  };
+
+  const btnEmergencyAbort = document.getElementById("btnEmergencyAbort");
+  if (btnEmergencyAbort) {
+    btnEmergencyAbort.addEventListener("click", () => {
+      playSound("ack");
+      window.executeEmergencyStop();
+    });
+  }
+
+  // 1b. Isolated Workspace Switcher
+  const selWorkspace = document.getElementById("selWorkspace");
+  if (selWorkspace) {
+    selWorkspace.value = state.currentWorkspace || "personal";
+    selWorkspace.addEventListener("change", (e) => {
+      state.currentWorkspace = e.target.value;
+      localStorage.setItem("jarvis_workspace", e.target.value);
+      playSound("blip");
+      appendLog("system", "WORKSPACE", `Active context isolated to: ${state.currentWorkspace.toUpperCase()}`);
+    });
+  }
+
+  // 2. Open Artifacts Folder (Desktop\Jarvis_Created_Files)
+  window.openDesktopCodeFolder = async function() {
+    playSound("ack");
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.open_created_files_folder) {
+      try {
+        await window.pywebview.api.open_created_files_folder();
+        appendLog("tool", "EXPLORER", "Opened Desktop\\Jarvis_Created_Files in Windows Explorer.");
+        return;
+      } catch(e) {}
+    }
+    try {
+      const res = await fetch("/api/desktop/open_folder", { method: "POST" });
+      const data = await res.json();
+      appendLog("tool", "EXPLORER", `Opened directory: ${data.path}`);
+    } catch(e) {
+      console.error("Open folder error:", e);
+    }
+  };
+
+  const btnOpenArtifacts = document.getElementById("btnOpenArtifactsFolder");
+  if (btnOpenArtifacts) btnOpenArtifacts.addEventListener("click", window.openDesktopCodeFolder);
+
+  const btnOpenArtifactsFromSpec = document.getElementById("btnOpenArtifactsFromSpec");
+  if (btnOpenArtifactsFromSpec) btnOpenArtifactsFromSpec.addEventListener("click", window.openDesktopCodeFolder);
+
+  // 3. Interactive Human Approval Gate
+  let currentPendingApprovalTask = null;
+  window.openApprovalModal = function(task) {
+    currentPendingApprovalTask = task;
+    state.approvalModalOpen = true;
+    const modal = document.getElementById("approvalModal");
+    const detailsEl = document.getElementById("approvalTaskDetails");
+    if (!modal || !detailsEl) return;
+
+    detailsEl.innerHTML = `
+      <div style="color:#ffaa00; font-weight:700; margin-bottom:4px;">TASK ID: ${escapeHtml(task.id)}</div>
+      <div><strong>Action:</strong> ${escapeHtml(task.title || 'High-Risk Operation')}</div>
+      <div><strong>Specialist:</strong> ${escapeHtml(task.specialist || 'Core Brain')}</div>
+      <div style="margin-top:6px; color:#ffdd80;"><strong>Authorization Prompt:</strong> ${escapeHtml(task.approval_prompt || 'Sir Shakil, do you authorize execution of this directive?')}</div>
+    `;
+    modal.classList.add("active");
+    playSound("blip");
+  };
+
+  window.closeApprovalModal = function() {
+    const modal = document.getElementById("approvalModal");
+    if (modal) modal.classList.remove("active");
+    state.approvalModalOpen = false;
+    currentPendingApprovalTask = null;
+  };
+
+  const btnCloseApproval = document.getElementById("btnCloseApproval");
+  if (btnCloseApproval) btnCloseApproval.addEventListener("click", window.closeApprovalModal);
+
+  const btnAuthorizeApproval = document.getElementById("btnAuthorizeApproval");
+  if (btnAuthorizeApproval) {
+    btnAuthorizeApproval.addEventListener("click", async () => {
+      if (!currentPendingApprovalTask) return;
+      playSound("ack");
+      const taskId = currentPendingApprovalTask.id;
+      try {
+        const res = await fetch("/api/orchestrator/approve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ task_id: taskId })
+        });
+        const data = await res.json();
+        appendLog("jarvis", "AUTHORIZED", `Directive #${taskId} authorized by Sir Shakil.`);
+        window.closeApprovalModal();
+      } catch(e) {
+        alert("Authorization failed: " + e.message);
+      }
+    });
+  }
+
+  const btnRejectApproval = document.getElementById("btnRejectApproval");
+  if (btnRejectApproval) {
+    btnRejectApproval.addEventListener("click", async () => {
+      if (!currentPendingApprovalTask) return;
+      playSound("blip");
+      const taskId = currentPendingApprovalTask.id;
+      try {
+        const res = await fetch("/api/orchestrator/reject", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ task_id: taskId, reason: "Rejected by Sir Shakil" })
+        });
+        appendLog("warning", "REJECTED", `Directive #${taskId} aborted by Sir Shakil.`);
+        window.closeApprovalModal();
+      } catch(e) {
+        alert("Rejection failed: " + e.message);
+      }
+    });
+  }
+
+  // 4. Specialist Agents Mission Deck
+  const specialistConfigs = {
+    coding: {
+      title: "Coding & Software Engineer",
+      desc: "Production-grade script & application generation saved directly to Desktop.",
+      defaultPrompt: "Build a Python utility to monitor crypto price alerts and export to CSV"
+    },
+    research: {
+      title: "Research & Intelligence Specialist",
+      desc: "Deep web synthesis, academic literature queries, and knowledge vault assimilation.",
+      defaultPrompt: "Conduct deep competitive analysis on top AI agency services"
+    },
+    qa: {
+      title: "QA & Testing Engineer",
+      desc: "Syntax validation, regression auditing, and code test verification.",
+      defaultPrompt: "Perform comprehensive QA test on current Jarvis orchestrator components"
+    },
+    marketing: {
+      title: "Chief Marketing Strategist",
+      desc: "Direct response funnels, multi-channel customer acquisition, and monetization strategy.",
+      defaultPrompt: "Develop complete customer acquisition funnel for $3k/mo AI automation retainers"
+    },
+    seo: {
+      title: "SEO & Content Strategist",
+      desc: "Eventbrite ranking optimization, programmatic SEO, and metadata engineering.",
+      defaultPrompt: "Generate an Eventbrite SEO optimization pack for an AI Automation Agency workshop"
+    },
+    leadgen: {
+      title: "B2B Lead Generation Specialist",
+      desc: "Cold outreach email sequences, LinkedIn messaging, and B2B pipeline development.",
+      defaultPrompt: "Craft a 4-step personalized cold outreach sequence for Canadian dental clinic owners"
+    },
+    wordpress: {
+      title: "WordPress & CMS Architect",
+      desc: "Custom WordPress architectures, Elementor layout blueprints, and PHP snippets.",
+      defaultPrompt: "Create custom Elementor landing page blueprint with booking form integration"
+    },
+    business: {
+      title: "Strategic Business & Financial Analyst",
+      desc: "Crypto market technical analysis (EMA 9/20, 109) and niche market unit economics.",
+      defaultPrompt: "Analyze Solana (SOL) EMA 9 and EMA 20 trading indicator signal setup"
+    },
+    system: {
+      title: "Windows Systems Automation Engineer",
+      desc: "Workstation automation, audio endpoint control, screenshot captures, and process inspection.",
+      defaultPrompt: "Report full system diagnostics and memory allocation status"
+    }
+  };
+
+  let selectedSpecialist = "coding";
+  const specialistsModal = document.getElementById("specialistsModal");
+  const btnSpecialistsDeck = document.getElementById("btnSpecialistsDeck");
+  const btnCloseSpecialists = document.getElementById("btnCloseSpecialists");
+
+  if (btnSpecialistsDeck) {
+    btnSpecialistsDeck.addEventListener("click", () => {
+      playSound("blip");
+      specialistsModal.classList.add("active");
+    });
+  }
+  if (btnCloseSpecialists) {
+    btnCloseSpecialists.addEventListener("click", () => {
+      specialistsModal.classList.remove("active");
+    });
+  }
+
+  // Spec tab buttons
+  document.querySelectorAll(".spec-tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".spec-tab-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      selectedSpecialist = btn.getAttribute("data-spec");
+      const cfg = specialistConfigs[selectedSpecialist] || specialistConfigs.coding;
+      document.getElementById("specAgentTitle").innerText = cfg.title;
+      document.getElementById("specAgentDesc").innerText = cfg.desc;
+      document.getElementById("inpSpecPrompt").placeholder = cfg.defaultPrompt;
+      playSound("blip");
+    });
+  });
+
+  // Dispatch Specialist
+  const btnDispatch = document.getElementById("btnDispatchSpecialist");
+  if (btnDispatch) {
+    btnDispatch.addEventListener("click", async () => {
+      const prompt = document.getElementById("inpSpecPrompt").value.trim() || document.getElementById("inpSpecPrompt").placeholder;
+      const outDeck = document.getElementById("specOutputDeck");
+      playSound("ack");
+      btnDispatch.innerText = "DISPATCHING...";
+      btnDispatch.disabled = true;
+      outDeck.innerHTML = `<span style="color:#00e5ff;">Dispatching <strong>${selectedSpecialist.toUpperCase()}</strong> under Master Orchestrator supervision...</span>`;
+      appendLog("jarvis", "SPECIALIST DISPATCH", `Deployed ${selectedSpecialist} agent for '${prompt.slice(0, 40)}...'`);
+
+      try {
+        const res = await fetch("/api/specialist/dispatch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ specialist_id: selectedSpecialist, prompt: prompt })
+        });
+        const data = await res.json();
+        if (data.success) {
+          let html = `<div style="color:#38ef7d; font-weight:700; margin-bottom:8px;">✓ TASK #${escapeHtml(data.task_id)} COMPLETED [${escapeHtml(data.state).toUpperCase()}]</div>`;
+          html += `<div style="margin-bottom:8px; opacity:0.8;">Evidence: ${escapeHtml(data.evidence || 'Verified')}</div>`;
+          
+          const r = data.result || {};
+          if (r.saved_files && r.saved_files.length > 0) {
+            html += `<div style="background:rgba(56,239,125,0.1); border:1px solid #38ef7d; padding:8px; border-radius:3px; margin-bottom:8px;">`;
+            html += `<strong>Saved to Desktop\\Jarvis_Created_Files:</strong><br>`;
+            r.saved_files.forEach(f => {
+              html += `• <code>${escapeHtml(f.filename)}</code> (${f.lines} lines)<br>`;
+            });
+            html += `</div>`;
+          }
+
+          const rawText = r.response || r.summary || r.strategy || r.seo_pack || r.outreach_sequence || r.blueprint || r.analysis || r.report || JSON.stringify(r, null, 2);
+          html += `<div style="white-space:pre-wrap; max-height:260px; overflow-y:auto; font-family:var(--font-mono); font-size:11px; background:rgba(0,0,0,0.5); padding:10px; border:1px solid rgba(0,229,255,0.2);">${escapeHtml(rawText)}</div>`;
+          outDeck.innerHTML = html;
+          playSound("blip");
+        } else {
+          outDeck.innerHTML = `<span style="color:#ff3344;">Dispatch failed: ${escapeHtml(data.error || 'Unknown error')}</span>`;
+        }
+      } catch(e) {
+        outDeck.innerHTML = `<span style="color:#ff3344;">Dispatch network error: ${escapeHtml(e.message)}</span>`;
+      } finally {
+        btnDispatch.innerText = "DISPATCH AGENT";
+        btnDispatch.disabled = false;
+      }
+    });
+  }
+
+  // ==========================================================================
+  // J.A.R.V.I.S. MARK XVI ADVANCED UI ENGINE & WORKSPACE ROUTING
+  // ==========================================================================
+
+  // 1. Emergency Hard Abort (<100ms)
+  window.executeEmergencyStop = async function() {
+    playSound("alert");
+    clearAudioQueue();
+    state.jarvisIsSpeaking = false;
+    currentPlayingAudio = null;
+
+    // WebSocket abort signal
+    if (wsChat && wsChat.readyState === WebSocket.OPEN) {
+      try {
+        wsChat.send(JSON.stringify({ type: "cancel" }));
+      } catch (e) {}
+    }
+
+    // Direct REST abort signal
+    try {
+      fetch("/api/conversation/cancel", { method: "POST" }).catch(() => {});
+    } catch (e) {}
+
+    // Cancel native speech recognition
+    if (recognition) {
+      try { recognition.stop(); } catch(e){}
+    }
+
+    unlockMicAfterJarvisTurn();
+    setAssistantStatus("idle", "ABORTED");
+    appendLog("warning", "ABORT", "Emergency hard abort executed. Operations paused.");
+    showToast("🛑 Emergency Abort: All Operations Halted", "error", 3000);
+  };
+
+  // 2. Toast & Notification System
+  const systemNotifications = [];
+
+  window.showToast = function(message, type = "info", duration = 3500) {
+    const container = document.getElementById("toastContainer");
+    if (!container) return;
+
+    const toast = document.createElement("div");
+    toast.className = `toast-item toast-${type}`;
+
+    const iconMap = { info: "💎", success: "✓", warning: "⚠️", error: "❌" };
+    toast.innerHTML = `
+      <span style="font-size:16px;">${iconMap[type] || "ℹ️"}</span>
+      <span style="flex:1;">${escapeHtml(message)}</span>
+    `;
+
+    container.appendChild(toast);
+    addNotificationRecord(message, type);
+
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(-10px)";
+      setTimeout(() => toast.remove(), 250);
+    }, duration);
+  };
+
+  function addNotificationRecord(message, type = "info") {
+    const list = document.getElementById("notificationList");
+    const badge = document.getElementById("notificationBadgeCount");
+    if (!list) return;
+
+    const timeStr = new Date().toTimeString().split(" ")[0];
+    const item = document.createElement("div");
+    item.className = `notification-item ${type}`;
+    item.innerHTML = `
+      <div>${escapeHtml(message)}</div>
+      <div class="notification-time">[${timeStr}] · ${type.toUpperCase()}</div>
+    `;
+
+    list.insertBefore(item, list.firstChild);
+    systemNotifications.unshift({ message, type, time: timeStr });
+    if (badge) {
+      badge.innerText = systemNotifications.length;
+    }
+  }
+
+  // 3. Workspace Navigation Engine
+  const WORKSPACES = {
+    "command_center": { id: "command_center", name: "COMMAND CENTER", viewId: "workspaceCommandCenter" },
+    "chat": { id: "chat", name: "NEURAL CHAT", viewId: "workspaceChat" },
+    "agents": { id: "agents", name: "AGENT NETWORK", viewId: "workspaceAgents" },
+    "operations": { id: "operations", name: "OPERATIONS & TASKS", viewId: "workspaceOperations" },
+    "research": { id: "research", name: "RESEARCH & INTEL", viewId: "workspaceResearch" },
+    "marketing": { id: "marketing", name: "MARKETING HUB", viewId: "workspaceMarketing" },
+    "memory": { id: "memory", name: "MEMORY VAULT", viewId: "workspaceMemory" },
+    "diagnostics": { id: "diagnostics", name: "SYSTEM DIAGNOSTICS", viewId: "workspaceDiagnostics" },
+    "settings": { id: "settings", name: "SETTINGS", viewId: "workspaceSettings" }
+  };
+
+  let currentActiveWorkspace = localStorage.getItem("jarvis_active_workspace") || "command_center";
+
+  window.switchWorkspace = function(workspaceKey) {
+    if (!WORKSPACES[workspaceKey]) return;
+    currentActiveWorkspace = workspaceKey;
+    localStorage.setItem("jarvis_active_workspace", workspaceKey);
+
+    // Update Navigation Rail active classes
+    document.querySelectorAll(".nav-rail-item").forEach(item => {
+      if (item.getAttribute("data-workspace") === workspaceKey) {
+        item.classList.add("active");
+      } else {
+        item.classList.remove("active");
+      }
+    });
+
+    // Update Workspace Views
+    document.querySelectorAll(".workspace-view").forEach(view => {
+      view.classList.remove("active");
+    });
+    const targetView = document.getElementById(WORKSPACES[workspaceKey].viewId);
+    if (targetView) {
+      targetView.classList.add("active");
+    }
+
+    // Update Header Badge
+    const badgeEl = document.getElementById("currentWorkspaceHeaderBadge");
+    if (badgeEl) {
+      badgeEl.innerText = WORKSPACES[workspaceKey].name;
+    }
+
+    // Auto-focus relevant inputs when switching
+    if (workspaceKey === "chat") {
+      const inp = document.getElementById("inpDedicatedChat");
+      if (inp) setTimeout(() => inp.focus(), 150);
+    } else if (workspaceKey === "command_center") {
+      const inp = document.getElementById("cmdInput");
+      if (inp) setTimeout(() => inp.focus(), 150);
+    } else if (workspaceKey === "operations") {
+      if (typeof window.refreshOperationsPipeline === "function") window.refreshOperationsPipeline();
+    } else if (workspaceKey === "memory") {
+      if (typeof loadUserFacts === "function") loadUserFacts();
+      if (typeof loadResearchedKnowledge === "function") loadResearchedKnowledge();
+    }
+
+    playSound("blip");
+    showToast(`Switched to ${WORKSPACES[workspaceKey].name}`, "info", 1800);
+  };
+
+  // Bind Navigation Rail click events
+  document.querySelectorAll(".nav-rail-item").forEach(item => {
+    item.addEventListener("click", () => {
+      const ws = item.getAttribute("data-workspace");
+      if (ws) switchWorkspace(ws);
+    });
+    item.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        const ws = item.getAttribute("data-workspace");
+        if (ws) switchWorkspace(ws);
+      }
+    });
+  });
+
+  // Toggle Navigation Rail expand/collapse
+  const btnToggleRail = document.getElementById("btnToggleRail");
+  const mainNavRail = document.getElementById("mainNavRail");
+  if (btnToggleRail && mainNavRail) {
+    // Restore saved expansion state
+    const isExpanded = localStorage.getItem("jarvis_nav_expanded") === "true";
+    if (isExpanded) mainNavRail.classList.add("expanded");
+
+    btnToggleRail.addEventListener("click", () => {
+      mainNavRail.classList.toggle("expanded");
+      localStorage.setItem("jarvis_nav_expanded", mainNavRail.classList.contains("expanded"));
+      playSound("blip");
+    });
+  }
+
+  // 4. Command Palette (Ctrl+K)
+  const COMMANDS_REGISTRY = [
+    { title: "Go to Command Center", category: "Workspaces", shortcut: "Alt+1", action: () => switchWorkspace("command_center") },
+    { title: "Go to Neural Chat", category: "Workspaces", shortcut: "Alt+2", action: () => switchWorkspace("chat") },
+    { title: "Go to Agent Network", category: "Workspaces", shortcut: "Alt+3", action: () => switchWorkspace("agents") },
+    { title: "Go to Operations & Tasks", category: "Workspaces", shortcut: "Alt+4", action: () => switchWorkspace("operations") },
+    { title: "Go to Research & Intel", category: "Workspaces", shortcut: "Alt+5", action: () => switchWorkspace("research") },
+    { title: "Go to Marketing Hub", category: "Workspaces", shortcut: "Alt+6", action: () => switchWorkspace("marketing") },
+    { title: "Go to Memory Vault", category: "Workspaces", shortcut: "Alt+7", action: () => switchWorkspace("memory") },
+    { title: "Go to System Diagnostics", category: "Workspaces", shortcut: "Alt+8", action: () => switchWorkspace("diagnostics") },
+    { title: "Go to Settings", category: "Workspaces", shortcut: "Alt+9", action: () => switchWorkspace("settings") },
+
+    { title: "Check Unread Emails", category: "PC Actions", shortcut: "", action: () => transmitCommand("Jarvis, check my emails and give me an executive brief") },
+    { title: "Capture Screen", category: "PC Actions", shortcut: "", action: () => transmitCommand("Jarvis, take a screenshot") },
+    { title: "Lock Workstation", category: "PC Actions", shortcut: "", action: () => transmitCommand("Jarvis, lock my computer") },
+    { title: "Launch Jarvis Chrome Profile", category: "PC Actions", shortcut: "", action: () => transmitCommand("Jarvis, open dedicated browser profile named Jarvis") },
+    { title: "Open Desktop Created Files Folder", category: "PC Actions", shortcut: "Ctrl+O", action: () => window.openDesktopCodeFolder() },
+    { title: "Emergency Hard Abort", category: "PC Actions", shortcut: "Esc", action: () => window.executeEmergencyStop() },
+
+    { title: "Dispatch Coding Specialist", category: "Agents", shortcut: "", action: () => { switchWorkspace("agents"); const b = document.querySelector(".spec-tab-btn[data-spec='coding']"); if (b) b.click(); } },
+    { title: "Dispatch Research Specialist", category: "Agents", shortcut: "", action: () => { switchWorkspace("agents"); const b = document.querySelector(".spec-tab-btn[data-spec='research']"); if (b) b.click(); } },
+    { title: "Dispatch Marketing Specialist", category: "Agents", shortcut: "", action: () => { switchWorkspace("agents"); const b = document.querySelector(".spec-tab-btn[data-spec='marketing']"); if (b) b.click(); } },
+    { title: "Dispatch SEO & Eventbrite Agent", category: "Agents", shortcut: "", action: () => { switchWorkspace("agents"); const b = document.querySelector(".spec-tab-btn[data-spec='seo']"); if (b) b.click(); } },
+    { title: "Dispatch B2B Lead Gen Agent", category: "Agents", shortcut: "", action: () => { switchWorkspace("agents"); const b = document.querySelector(".spec-tab-btn[data-spec='leadgen']"); if (b) b.click(); } }
+  ];
+
+  let selectedPaletteIndex = 0;
+  let filteredCommands = [];
+
+  window.openCommandPalette = function() {
+    const modal = document.getElementById("cmdPaletteModal");
+    const input = document.getElementById("inpCmdPalette");
+    if (!modal || !input) return;
+
+    modal.classList.add("open");
+    input.value = "";
+    selectedPaletteIndex = 0;
+    renderPaletteResults("");
+    setTimeout(() => input.focus(), 60);
+    playSound("blip");
+  };
+
+  window.closeCommandPalette = function() {
+    const modal = document.getElementById("cmdPaletteModal");
+    if (modal) modal.classList.remove("open");
+  };
+
+  function renderPaletteResults(query) {
+    const resultsContainer = document.getElementById("cmdPaletteResults");
+    if (!resultsContainer) return;
+
+    const q = (query || "").toLowerCase().trim();
+    filteredCommands = COMMANDS_REGISTRY.filter(cmd => {
+      return !q || cmd.title.toLowerCase().includes(q) || cmd.category.toLowerCase().includes(q);
+    });
+
+    if (filteredCommands.length === 0) {
+      resultsContainer.innerHTML = `<div style="padding:16px; font-family:var(--font-mono); font-size:12px; color:var(--hud-text-muted); text-align:center;">No matching directives found for "${escapeHtml(query)}"</div>`;
+      return;
+    }
+
+    const groups = {};
+    filteredCommands.forEach((cmd, idx) => {
+      if (!groups[cmd.category]) groups[cmd.category] = [];
+      groups[cmd.category].push({ cmd, idx });
+    });
+
+    let html = "";
+    for (const [category, items] of Object.entries(groups)) {
+      html += `<div class="cmd-palette-group-title">${escapeHtml(category)}</div>`;
+      items.forEach(({ cmd, idx }) => {
+        const isSel = idx === selectedPaletteIndex;
+        html += `
+          <div class="cmd-palette-item ${isSel ? 'selected' : ''}" data-idx="${idx}">
+            <div class="cmd-palette-item-left">
+              <span>${escapeHtml(cmd.title)}</span>
+            </div>
+            ${cmd.shortcut ? `<span class="cmd-palette-item-shortcut">${escapeHtml(cmd.shortcut)}</span>` : ''}
+          </div>
+        `;
+      });
+    }
+
+    resultsContainer.innerHTML = html;
+
+    resultsContainer.querySelectorAll(".cmd-palette-item").forEach(el => {
+      el.addEventListener("click", () => {
+        const idx = parseInt(el.getAttribute("data-idx"), 10);
+        executePaletteIndex(idx);
+      });
+    });
+  }
+
+  function executePaletteIndex(idx) {
+    if (filteredCommands[idx]) {
+      closeCommandPalette();
+      filteredCommands[idx].action();
+    }
+  }
+
+  const inpCmdPalette = document.getElementById("inpCmdPalette");
+  if (inpCmdPalette) {
+    inpCmdPalette.addEventListener("input", (e) => {
+      selectedPaletteIndex = 0;
+      renderPaletteResults(e.target.value);
+    });
+
+    inpCmdPalette.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        selectedPaletteIndex = Math.min(selectedPaletteIndex + 1, filteredCommands.length - 1);
+        renderPaletteResults(inpCmdPalette.value);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        selectedPaletteIndex = Math.max(selectedPaletteIndex - 1, 0);
+        renderPaletteResults(inpCmdPalette.value);
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        executePaletteIndex(selectedPaletteIndex);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        closeCommandPalette();
+      }
+    });
+  }
+
+  // Click outside Command Palette modal closes it
+  const cmdPaletteModal = document.getElementById("cmdPaletteModal");
+  if (cmdPaletteModal) {
+    cmdPaletteModal.addEventListener("click", (e) => {
+      if (e.target === cmdPaletteModal) closeCommandPalette();
+    });
+  }
+
+  // 5. Notification Center Drawer
+  const btnOpenNotifications = document.getElementById("btnOpenNotifications");
+  const notificationDrawer = document.getElementById("notificationDrawer");
+  const btnCloseNotifications = document.getElementById("btnCloseNotifications");
+  const btnClearNotifications = document.getElementById("btnClearNotifications");
+
+  if (btnOpenNotifications && notificationDrawer) {
+    btnOpenNotifications.addEventListener("click", () => {
+      notificationDrawer.classList.toggle("open");
+      playSound("blip");
+    });
+  }
+  if (btnCloseNotifications && notificationDrawer) {
+    btnCloseNotifications.addEventListener("click", () => {
+      notificationDrawer.classList.remove("open");
+    });
+  }
+  if (btnClearNotifications) {
+    btnClearNotifications.addEventListener("click", () => {
+      const list = document.getElementById("notificationList");
+      const badge = document.getElementById("notificationBadgeCount");
+      if (list) list.innerHTML = `<div style="padding:14px; text-align:center; color:var(--hud-text-muted); font-size:12px;">All notifications cleared.</div>`;
+      systemNotifications.length = 0;
+      if (badge) badge.innerText = "0";
+      playSound("blip");
+    });
+  }
+
+  // 6. Header Buttons & Legacy Hooks
+  const btnOpenCmdPalette = document.getElementById("btnOpenCmdPalette");
+  if (btnOpenCmdPalette) {
+    btnOpenCmdPalette.addEventListener("click", openCommandPalette);
+  }
+
+  // Link legacy modal buttons to switch directly to full workspaces
+  const legacyLinks = [
+    { id: "btnOpenDedicatedChat", ws: "chat" },
+    { id: "btnSpecialistsDeck", ws: "agents" },
+    { id: "btnBrowserResearchHeader", ws: "research" },
+    { id: "btnMarketingHub", ws: "marketing" },
+    { id: "btnMemoryVault", ws: "memory" },
+    { id: "btnDiagnostics", ws: "diagnostics" },
+    { id: "btnSettings", ws: "settings" }
+  ];
+  legacyLinks.forEach(({ id, ws }) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener("click", () => switchWorkspace(ws));
+    }
+  });
+
+  const btnRefreshOps = document.getElementById("btnRefreshOps");
+  if (btnRefreshOps) {
+    btnRefreshOps.addEventListener("click", () => {
+      playSound("blip");
+      if (typeof window.refreshOperationsPipeline === "function") {
+        window.refreshOperationsPipeline();
+      }
+      showToast("Operations pipeline refreshed", "info", 1500);
+    });
+  }
+
+  // 7. Global Keyboard Shortcuts
+  window.addEventListener("keydown", (e) => {
+    // ESC: Emergency Abort or Close Modals
+    if (e.key === "Escape") {
+      const cmdPalette = document.getElementById("cmdPaletteModal");
+      const notifDrawer = document.getElementById("notificationDrawer");
+      if (cmdPalette && cmdPalette.classList.contains("open")) {
+        closeCommandPalette();
+        return;
+      }
+      if (notifDrawer && notifDrawer.classList.contains("open")) {
+        notifDrawer.classList.remove("open");
+        return;
+      }
+      const activeModals = document.querySelectorAll(".modal-overlay.active");
+      if (activeModals.length > 0) {
+        activeModals.forEach(m => m.classList.remove("active"));
+        return;
+      }
+      window.executeEmergencyStop();
+      return;
+    }
+
+    // Ctrl + K: Command Palette
+    if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
+      e.preventDefault();
+      openCommandPalette();
+      return;
+    }
+
+    // Alt + M: Toggle Navigation Rail
+    if (e.altKey && (e.key === "m" || e.key === "M")) {
+      e.preventDefault();
+      if (mainNavRail) {
+        mainNavRail.classList.toggle("expanded");
+        localStorage.setItem("jarvis_nav_expanded", mainNavRail.classList.contains("expanded"));
+      }
+      return;
+    }
+
+    // Alt + Number (1-9): Workspace Switcher
+    if (e.altKey && e.key >= "1" && e.key <= "9") {
+      e.preventDefault();
+      const numMap = {
+        "1": "command_center",
+        "2": "chat",
+        "3": "agents",
+        "4": "operations",
+        "5": "research",
+        "6": "marketing",
+        "7": "memory",
+        "8": "diagnostics",
+        "9": "settings"
+      };
+      if (numMap[e.key]) switchWorkspace(numMap[e.key]);
+      return;
+    }
+
+    // Ctrl + O: Open Artifacts Folder
+    if (e.ctrlKey && (e.key === "o" || e.key === "O")) {
+      e.preventDefault();
+      window.openDesktopCodeFolder();
+      return;
+    }
+  });
+
+  // Restore saved active workspace on boot
+  if (currentActiveWorkspace && currentActiveWorkspace !== "command_center") {
+    switchWorkspace(currentActiveWorkspace);
+  }
+
+});
+

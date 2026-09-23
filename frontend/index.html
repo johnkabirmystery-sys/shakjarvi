@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>J.A.R.V.I.S. // Shakil's Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hud.css?v=mark16_stark_ref">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      background-color: #040810;
+      overflow: hidden;
+    }
+    .hud-master-shell {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+  </style>
+</head>
+<body>
+  <!-- Cyber Scanlines & Matrix Grid -->
+  <div class="scanlines"></div>
+  <div class="grid-bg"></div>
+
+  <!-- Master OS Shell -->
+  <div class="hud-master-shell">
+    
+    <!-- TOP STATUS HEADER (REFERENCE STARK SPEC) -->
+    <header class="ref-top-bar pywebview-drag-region" id="refTopBar">
+      <div class="ref-top-left pywebview-drag-region">
+        <div class="stark-ind-badge">STARK IND.</div>
+        <div class="ref-title-group">
+          <div class="ref-main-title">J.A.R.V.I.S. <span>// SHAKIL'S ASSISTANT</span> &nbsp;MARK XVI</div>
+          <div class="ref-sub-title">AI OPERATING SYSTEM &nbsp;◆&nbsp; <span id="refActiveWsTitle" style="color:#00e5ff; font-weight:700;">COMMAND CENTER</span> &nbsp;◆&nbsp; SECURED</div>
+        </div>
+      </div>
+
+      <div class="ref-top-center pywebview-drag-region">
+        <div class="ref-clock" id="hudClock">15:55:08</div>
+        <div class="ref-date" id="hudDate">TUE, SEP 23, 2026</div>
+      </div>
+
+      <div class="ref-top-right">
+        <!-- Status Pills -->
+        <div class="ref-status-pill cyan" id="badgeCore">
+          <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#00e5ff; box-shadow:0 0 6px #00e5ff;"></span>
+          ONLINE: ALL SYSTEMS OPERATIONAL
+        </div>
+
+        <div class="ref-status-pill cyan" id="badgeAntigravity" title="Google Antigravity SDK">
+          <span>⚛️</span> ANTIGRAVITY: CONNECTED
+        </div>
+
+        <div class="ref-status-pill green" id="badgeOmniroute" title="OmniRoute Multi-Model Gateway">
+          <span>🟢</span> OMNIROUTE: 1156 MODELS
+        </div>
+
+        <div class="ref-status-pill orange" id="badgeBrowserProfile" title="Chrome Automation Online">
+          <span>🟠</span> CHROME: ONLINE
+        </div>
+
+        <div class="ref-status-pill cyan clickable-pill" id="badgeMicStatus" onclick="openAudioMatrixModal()" title="Click to Configure Audio Devices (Mic & Speaker)" style="cursor: pointer;">
+          <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#00e5ff; box-shadow:0 0 6px #00e5ff;"></span>
+          MIC: LIVE
+        </div>
+
+        <div class="ref-status-pill purple clickable-pill" id="badgeAudioMatrix" onclick="openAudioMatrixModal()" title="Audio Hardware Matrix & Hotplug Routing" style="cursor: pointer; border-color: rgba(213,0,249,0.5); color: #e1bee7;">
+          <span>🎧</span> <span id="labelAudioMatrix">AUDIO: AUTO</span>
+        </div>
+
+        <!-- Tactical HUD Theme Selector -->
+        <div class="ref-status-pill amber clickable-pill" id="badgeThemeSelector" onclick="cycleHudTheme()" title="Click to Cycle Tactical HUD Themes (Mark XVI / War Machine / Stealth / Neural Matrix)" style="cursor: pointer; border-color: rgba(255,171,0,0.5);">
+          <span id="themePillIcon">⚡</span> <span id="labelTheme">THEME: MARK XVI</span>
+        </div>
+
+        <!-- Audio FX Soundscape Pill -->
+        <div class="ref-status-pill blue clickable-pill" id="badgeAudioFxToggle" onclick="toggleAudioFx()" title="Stark Sound Effects (Web Audio Synthesis)" style="cursor: pointer;">
+          <span>🔊</span> <span id="labelAudioFx">FX: ON</span>
+        </div>
+
+        <!-- Cybernetic Terminal Console Button -->
+        <button class="ref-top-icon-btn" id="btnToggleTerminal" onclick="toggleTerminalDrawer()" title="Cybernetic Terminal Console (Press ~)">
+          <span>⬛</span>
+        </button>
+
+        <!-- Spotlight Command Palette Button -->
+        <button class="ref-top-icon-btn" id="btnOpenCommandPalette" onclick="openCommandPalette()" title="Command Palette (Ctrl + K / Ctrl + Space)">
+          <span>⌨️</span>
+        </button>
+
+        <!-- User Profile Pill -->
+        <div class="ref-user-badge" id="refUserBadge">
+          <div class="ref-avatar-circle">🤖</div>
+          <div class="ref-user-meta">
+            <span class="ref-user-name">SHAKIL</span>
+            <span class="ref-user-role">PRIME MODE</span>
+          </div>
+        </div>
+
+        <!-- Notification Bell -->
+        <button class="ref-top-icon-btn" id="btnOpenNotifications" title="Notifications">
+          <span>🔔</span>
+          <span id="notificationBadgeCount" style="position:absolute; top:2px; right:2px; background:#ff1744; color:#fff; font-size:8px; font-weight:800; width:12px; height:12px; border-radius:50%; display:flex; align-items:center; justify-content:center;">1</span>
+        </button>
+
+        <!-- Settings Gear -->
+        <button class="ref-top-icon-btn" id="btnSettingsHeader" title="Settings & Protocols">
+          <span>⚙️</span>
+        </button>
+
+        <!-- Native Window Controls -->
+        <div class="ref-window-ctrls">
+          <button class="ref-win-btn" id="btnWinMinimize" title="Minimize Window">─</button>
+          <button class="ref-win-btn" id="btnWinMaximize" title="Maximize Window">▢</button>
+          <button class="ref-win-btn close-btn" id="btnWinClose" title="Close Window">✕</button>
+        </div>
+
+        <!-- Hidden Legacy Bindings to maintain JS integrity & prevent null reference errors -->
+        <div style="display:none;" id="legacyHudCompatibility">
+          <button id="btnOpenCmdPalette"></button>
+          <button id="btnEmergencyAbort"></button>
+          <button id="btnOpenArtifactsFolder"></button>
+          <button id="btnTestVoice"></button>
+          <button id="btnFullscreen"></button>
+          <button id="btnOpenDedicatedChat"></button>
+          <button id="btnSpecialistsDeck"></button>
+          <button id="btnBrowserResearchHeader"></button>
+          <button id="btnMarketingHub"></button>
+          <button id="btnJarvisBrowser"></button>
+          <button id="btnMemoryVault"></button>
+          <button id="btnDiagnostics"></button>
+          <button id="btnSettings"></button>
+          <span id="badgeWs"></span>
+          <span id="badgeVoice"></span>
+          <span id="badgeEvolution"></span>
+          <span id="badgeGateway"></span>
+          <span id="badgeTasks"></span>
+          <span id="currentWorkspaceHeaderBadge"></span>
+          <select id="selWorkspace"><option value="personal">personal</option></select>
+          <div id="audioUnlockBanner"></div>
+          <canvas id="arcCanvas" width="10" height="10"></canvas>
+          <div id="orchestratorPipelineDeck"></div>
+          <svg><circle id="cpuCircle"></circle></svg>
+          <div id="ramProgressFill"></div>
+          <span id="ramPercentLabel"></span>
+          <span id="netUp"></span>
+          <span id="netDown"></span>
+          <span id="activeWindowTitle"></span>
+          <span id="coreSubtext"></span>
+          <span id="inputStatusIndicator"></span>
+          <div id="terminalFeed"></div>
+          <div id="dedicatedChatBody"></div>
+          <input type="checkbox" id="chkContinuousVoice">
+          <input type="text" id="inpDedicatedChat">
+          <input type="checkbox" id="chkWakeWord">
+          <select id="selSpeechLang"><option value="en-US">en-US</option></select>
+          <select id="selAudioMode"><option value="pc_speakers">pc_speakers</option></select>
+          <select id="selDedicatedChatModel"><option value="agy/gemini-3.7-flash-low">agy/gemini-3.7-flash-low</option></select>
+          <div id="dedicatedChatModal"></div>
+          <button id="btnCloseDedicatedChat"></button>
+          <button id="btnClearDedicatedChat"></button>
+          <button id="btnDedicatedChatSend"></button>
+          <input type="range" id="volumeSlider" min="0" max="100" value="75">
+          <span id="volumeDisplay">75%</span>
+          <button id="btnMuteToggle"></button>
+          <button id="btnMediaPlay"></button>
+          <button id="btnScreenshot"></button>
+          <button id="btnLockPc"></button>
+          <div id="configModal"></div>
+          <input type="text" id="cfgApiKey">
+          <button id="btnCloseConfig"></button>
+          <div id="memoryModal"></div>
+          <span id="factsCount">0</span>
+          <span id="knowledgeCount">0</span>
+          <button id="btnCloseMemory"></button>
+          <button id="btnTriggerResearch"></button>
+          <input type="text" id="inpResearchTopic">
+          <select id="newFactCategory"><option value="general">general</option></select>
+          <button id="btnExecuteRagSearch"></button>
+          <input type="text" id="inpRagQuery">
+          <div id="ragResultsDeck"></div>
+          <div id="marketingModal"></div>
+          <button id="btnCloseMarketing"></button>
+          <button id="btnQuickMarketingHub"></button>
+          <button id="btnQuickCheckEmails"></button>
+          <input type="text" id="ebAudience">
+          <input type="text" id="ebLocation">
+          <input type="text" id="campValue">
+          <input type="text" id="campPrice">
+          <select id="campType"><option value="omni">omni</option></select>
+          <button id="btnQuickJarvisChrome"></button>
+          <button id="btnOpenEventbriteDash"></button>
+          <button id="btnOpenMetaAdsDash"></button>
+          <button id="btnConfirmSendEmail"></button>
+          <div id="emailDraftStageBox"></div>
+          <button id="btnCancelSendEmail"></button>
+          <div id="specialistsModal"></div>
+          <button id="btnCloseSpecialists"></button>
+          <button id="btnToggleRail"></button>
+          <div id="mainNavRail"></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- SHELL BODY: SIDEBAR + VIEWPORT -->
+    <div class="ref-shell-body">
+
+      <!-- LEFT NAVIGATION SIDEBAR (REFERENCE SPEC) -->
+      <aside class="ref-sidebar" id="refSidebar">
+        <div class="ref-nav-list" id="refNavList">
+          <div class="ref-nav-item active" data-workspace="command_center" tabindex="0">
+            <span class="ref-nav-icon">🏠</span>
+            <span>COMMAND CENTER</span>
+          </div>
+          <div class="ref-nav-item" data-workspace="chat" tabindex="0">
+            <span class="ref-nav-icon">💬</span>
+            <span>CONVERSATION</span>
+          </div>
+          <div class="ref-nav-item" data-workspace="agents" tabindex="0">
+            <span class="ref-nav-icon">🤖</span>
+            <span>AGENT NETWORK</span>
+          </div>
+          <div class="ref-nav-item" data-workspace="operations" tabindex="0">
+            <span class="ref-nav-icon">🎯</span>
+            <span>MISSION CONTROL</span>
+          </div>
+          <div class="ref-nav-item" data-workspace="research" tabindex="0">
+            <span class="ref-nav-icon">🔍</span>
+            <span>RESEARCH</span>
+          </div>
+          <div class="ref-nav-item" data-workspace="marketing" tabindex="0">
+            <span class="ref-nav-icon">💼</span>
+            <span>BUSINESS INTEL</span>
+          </div>
+          <div class="ref-nav-item" data-workspace="marketing" tabindex="0">
+            <span class="ref-nav-icon">📈</span>
+            <span>MARKETING</span>
+          </div>
+          <div class="ref-nav-item" data-workspace="agents" tabindex="0">
+            <span class="ref-nav-icon">📁</span>
+            <span>PROJECTS</span>
+          </div>
+          <div class="ref-nav-item" data-workspace="memory" tabindex="0">
+            <span class="ref-nav-icon">🧠</span>
+            <span>MEMORY VAULT</span>
+          </div>
+          <div class="ref-nav-item" data-workspace="operations" tabindex="0">
+            <span class="ref-nav-icon">⚙️</span>
+            <span>AUTOMATIONS</span>
+          </div>
+          <div class="ref-nav-item" data-workspace="diagnostics" tabindex="0">
+            <span class="ref-nav-icon">📊</span>
+            <span>SYSTEM MONITOR</span>
+          </div>
+          <div class="ref-nav-item" data-workspace="diagnostics" tabindex="0">
+            <span class="ref-nav-icon">💻</span>
+            <span>DIAGNOSTICS</span>
+          </div>
+          <div class="ref-nav-item" data-workspace="operations" tabindex="0">
+            <span class="ref-nav-icon">🛡️</span>
+            <span>SECURITY</span>
+          </div>
+          <div class="ref-nav-item" data-workspace="spatial" tabindex="0" title="Spatial Intelligence / God's Eye View (Alt+0)">
+            <span class="ref-nav-icon">🌐</span>
+            <span>SPATIAL INTEL</span>
+          </div>
+          <div class="ref-nav-item" data-workspace="settings" tabindex="0">
+            <span class="ref-nav-icon">⚙️</span>
+            <span>SETTINGS</span>
+          </div>
+        </div>
+
+        <!-- QUICK LAUNCH SECTION (REFERENCE SPEC) -->
+        <div class="ref-quick-launch">
+          <div class="ref-quick-title">QUICK LAUNCH</div>
+          <div class="ref-quick-grid">
+            <button class="ref-quick-btn" data-action="launch" data-target="chrome">
+              <span>🌐</span> Chrome
+            </button>
+            <button class="ref-quick-btn" data-action="launch" data-target="code">
+              <span>💻</span> VS Code
+            </button>
+            <button class="ref-quick-btn" data-action="launch" data-target="terminal">
+              <span>⬛</span> Terminal
+            </button>
+            <button class="ref-quick-btn" data-action="launch" data-target="taskmgr">
+              <span>📈</span> Task Manager
+            </button>
+            <button class="ref-quick-btn" id="btnQuickEmails">
+              <span>✉️</span> Check Emails
+            </button>
+            <button class="ref-quick-btn" id="btnQuickEventbrite">
+              <span>🎟️</span> Eventbrite
+            </button>
+            <button class="ref-quick-btn" id="btnQuickAds">
+              <span>📢</span> Ads Engine
+            </button>
+            <button class="ref-quick-btn" id="btnQuickJarvisBrowser">
+              <span>🧭</span> Jarvis Browser
+            </button>
+            <button class="ref-quick-btn" id="btnQuickAddApp" style="grid-column: span 2; justify-content: center; color:#00e5ff; border-style:dashed;">
+              <span>➕</span> Add App
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- MAIN WORKSPACE VIEWPORT -->
+      <main class="main-viewport" id="mainViewport">
+
+        <!-- WORKSPACE 1: COMMAND CENTER (PRIMARY REFERENCE HUD) -->
+        <div class="workspace-view active" id="workspaceCommandCenter">
+          <div class="ref-viewport-container">
+            
+            <!-- TOP ROW: SYSTEM TELEMETRY (LEFT) | HOLOGRAPHIC CORE (CENTER) | AGENT NETWORK & APPROVALS (RIGHT) -->
+            <div class="ref-top-row">
+
+              <!-- LEFT COLUMN: SYSTEM TELEMETRY & ACTIVE TASKS -->
+              <div style="display:flex; flex-direction:column; gap:10px;">
+                <!-- CARD 1: SYSTEM TELEMETRY -->
+                <div class="ref-card" style="flex:1;">
+                  <div class="ref-card-header">
+                    <span class="ref-card-title">
+                      <span>⚡</span> SYSTEM TELEMETRY
+                    </span>
+                    <span style="font-family:var(--font-mono); font-size:9px; color:#38ef7d; display:flex; align-items:center; gap:4px;">
+                      <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#38ef7d; box-shadow:0 0 6px #38ef7d;"></span>
+                      LIVE
+                    </span>
+                  </div>
+
+                  <!-- 3 Circular Gauges: CPU, RAM, GPU -->
+                  <div class="ref-gauges-row">
+                    <!-- CPU GAUGE -->
+                    <div class="ref-gauge-col">
+                      <svg class="ref-gauge-svg" viewBox="0 0 60 60">
+                        <circle class="ref-gauge-bg" cx="30" cy="30" r="24"></circle>
+                        <circle class="ref-gauge-val" id="refCpuCircle" cx="30" cy="30" r="24" stroke-dasharray="150.8" stroke-dashoffset="119"></circle>
+                      </svg>
+                      <div class="ref-gauge-label">CPU</div>
+                      <div class="ref-gauge-percent" id="cpuPercent">21%</div>
+                      <div class="ref-gauge-subtext" id="cpuFreq">3.8 GHz</div>
+                      <canvas class="ref-gauge-sparkline" id="refCpuSparkline"></canvas>
+                    </div>
+
+                    <!-- RAM GAUGE -->
+                    <div class="ref-gauge-col">
+                      <svg class="ref-gauge-svg" viewBox="0 0 60 60">
+                        <circle class="ref-gauge-bg" cx="30" cy="30" r="24"></circle>
+                        <circle class="ref-gauge-val" id="refRamCircle" cx="30" cy="30" r="24" stroke-dasharray="150.8" stroke-dashoffset="69"></circle>
+                      </svg>
+                      <div class="ref-gauge-label">RAM</div>
+                      <div class="ref-gauge-percent" id="refRamPercent">54%</div>
+                      <div class="ref-gauge-subtext" id="ramDetail">8.5 / 15.9 GB</div>
+                      <canvas class="ref-gauge-sparkline" id="refRamSparkline"></canvas>
+                    </div>
+
+                    <!-- GPU GAUGE -->
+                    <div class="ref-gauge-col">
+                      <svg class="ref-gauge-svg" viewBox="0 0 60 60">
+                        <circle class="ref-gauge-bg" cx="30" cy="30" r="24"></circle>
+                        <circle class="ref-gauge-val" id="refGpuCircle" cx="30" cy="30" r="24" stroke-dasharray="150.8" stroke-dashoffset="95"></circle>
+                      </svg>
+                      <div class="ref-gauge-label">GPU</div>
+                      <div class="ref-gauge-percent" id="refGpuPercent">37%</div>
+                      <div class="ref-gauge-subtext" id="refGpuModel">AMD 780M</div>
+                      <canvas class="ref-gauge-sparkline" id="refGpuSparkline"></canvas>
+                    </div>
+                  </div>
+
+                  <!-- STORAGE BAR -->
+                  <div class="ref-storage-row">
+                    <div class="ref-storage-meta">
+                      <span>💾 STORAGE</span>
+                      <span id="refStorageText">173.5 GB / 200.1 GB</span>
+                      <span id="refStoragePercent" style="color:#00e5ff; font-weight:700;">86.7%</span>
+                    </div>
+                    <div class="ref-progress-bar-bg">
+                      <div class="ref-progress-bar-fill" id="refStorageFill" style="width: 86.7%;"></div>
+                    </div>
+                  </div>
+
+                  <!-- NETWORK BAR -->
+                  <div class="ref-network-row">
+                    <div style="display:flex; flex-direction:column; gap:2px;">
+                      <span style="font-family:var(--font-mono); font-size:8.5px; color:rgba(224,247,250,0.7);">🌐 NETWORK</span>
+                      <div class="ref-net-speeds" id="refNetSpeeds">4.9 MB/s ↓ &nbsp;4.8 MB/s ↑</div>
+                    </div>
+                    <canvas class="ref-net-wave-canvas" id="refNetWaveCanvas"></canvas>
+                  </div>
+                </div>
+
+                <!-- CARD 2: ACTIVE TASKS (3) -->
+                <div class="ref-card">
+                  <div class="ref-card-header">
+                    <span class="ref-card-title">
+                      <span>🟢</span> ACTIVE TASKS <span style="color:#00e5ff; font-family:var(--font-mono);">(3)</span>
+                    </span>
+                    <span class="ref-card-link" id="btnViewAllTasks">View All →</span>
+                  </div>
+
+                  <div class="ref-active-tasks-list" id="refActiveTasksList">
+                    <!-- Task 1 -->
+                    <div class="ref-task-item">
+                      <div class="ref-task-icon-circle">🌐</div>
+                      <div class="ref-task-details">
+                        <div class="ref-task-name">Web Research: Shopify Micro-SaaS</div>
+                        <div class="ref-task-sub">
+                          <span>Research Agent</span>
+                          <span style="color:#00e5ff; font-weight:700;">65%</span>
+                        </div>
+                        <div class="ref-progress-bar-bg" style="height:3px; margin-top:3px;">
+                          <div class="ref-progress-bar-fill" style="width:65%;"></div>
+                        </div>
+                      </div>
+                      <div class="ref-task-actions">
+                        <span class="ref-task-timer">00:02:34</span>
+                        <span style="font-size:10px; color:#00e5ff; cursor:pointer;">▶</span>
+                      </div>
+                    </div>
+
+                    <!-- Task 2 -->
+                    <div class="ref-task-item">
+                      <div class="ref-task-icon-circle" style="border-color:#ffab00;">💻</div>
+                      <div class="ref-task-details">
+                        <div class="ref-task-name">Build UI Component: Command Center</div>
+                        <div class="ref-task-sub">
+                          <span>Frontend Agent</span>
+                          <span style="color:#ffab00; font-weight:700;">42%</span>
+                        </div>
+                        <div class="ref-progress-bar-bg" style="height:3px; margin-top:3px;">
+                          <div class="ref-progress-bar-fill" style="width:42%; background:linear-gradient(90deg,#ffab00,#ff8800);"></div>
+                        </div>
+                      </div>
+                      <div class="ref-task-actions">
+                        <span class="ref-task-timer">00:01:12</span>
+                        <span style="font-size:10px; color:#ffab00; cursor:pointer;">▶</span>
+                      </div>
+                    </div>
+
+                    <!-- Task 3 -->
+                    <div class="ref-task-item">
+                      <div class="ref-task-icon-circle" style="border-color:#38ef7d;">✉️</div>
+                      <div class="ref-task-details">
+                        <div class="ref-task-name">Check Emails & Summarize</div>
+                        <div class="ref-task-sub">
+                          <span>Productivity Agent</span>
+                          <span style="color:#38ef7d; font-weight:700;">78%</span>
+                        </div>
+                        <div class="ref-progress-bar-bg" style="height:3px; margin-top:3px;">
+                          <div class="ref-progress-bar-fill" style="width:78%; background:linear-gradient(90deg,#38ef7d,#00e676);"></div>
+                        </div>
+                      </div>
+                      <div class="ref-task-actions">
+                        <span class="ref-task-timer">00:00:45</span>
+                        <span style="font-size:10px; color:#38ef7d; cursor:pointer;">▶</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- CENTER COLUMN: HOLOGRAPHIC INTELLIGENCE CORE -->
+              <div class="ref-card ref-core-container">
+                <div class="ref-hologram-viewport">
+                  <!-- Hologram Mode Switcher -->
+                  <div class="ref-holo-mode-bar" id="refHoloModeBar">
+                    <button class="ref-holo-mode-btn active" id="btnHoloHelmet" onclick="setHologramMode('helmet')">HELMET 3D</button>
+                    <button class="ref-holo-mode-btn" id="btnHoloArc" onclick="setHologramMode('arc')">ARC CORE</button>
+                    <button class="ref-holo-mode-btn" id="btnHoloGlobe" onclick="setHologramMode('globe')">TACTICAL GLOBE</button>
+                  </div>
+
+                  <!-- 3D Wireframe Helmet Canvas -->
+                  <canvas id="refHologramCanvas" width="600" height="340"></canvas>
+
+                  <!-- 8 Orbiting Status Nodes around the Helmet -->
+                  <!-- Top Left: LISTENING (135°) -->
+                  <div class="ref-orbital-node active" id="nodeListening" style="top: 15px; left: 32px;" title="Listening Node">
+                    <span class="ref-orbital-icon">🎙️</span>
+                    <span class="ref-orbital-label">LISTENING</span>
+                  </div>
+
+                  <!-- Mid Left: PROCESSING (180°) -->
+                  <div class="ref-orbital-node" id="nodeProcessing" style="top: 85px; left: 10px;" title="Processing Node">
+                    <span class="ref-orbital-icon">🧠</span>
+                    <span class="ref-orbital-label">PROCESSING</span>
+                  </div>
+
+                  <!-- Lower Left: RESEARCHING (225°) -->
+                  <div class="ref-orbital-node" id="nodeResearching" style="top: 155px; left: 10px;" title="Researching Node">
+                    <span class="ref-orbital-icon">🌐</span>
+                    <span class="ref-orbital-label">RESEARCHING</span>
+                  </div>
+
+                  <!-- Bottom Left: EXECUTING (270°) -->
+                  <div class="ref-orbital-node" id="nodeExecuting" style="bottom: 25px; left: 40px;" title="Executing Node">
+                    <span class="ref-orbital-icon">⚙️</span>
+                    <span class="ref-orbital-label">EXECUTING</span>
+                  </div>
+
+                  <!-- Top Right: GENERATING (45°) -->
+                  <div class="ref-orbital-node node-amber" id="nodeGenerating" style="top: 15px; right: 32px;" title="Generating Node">
+                    <span class="ref-orbital-icon">✨</span>
+                    <span class="ref-orbital-label">GENERATING</span>
+                  </div>
+
+                  <!-- Mid Right: SPEAKING (0°) -->
+                  <div class="ref-orbital-node node-pink" id="nodeSpeaking" style="top: 85px; right: 10px;" title="Speaking Node">
+                    <span class="ref-orbital-icon">🔊</span>
+                    <span class="ref-orbital-label">SPEAKING</span>
+                  </div>
+
+                  <!-- Lower Right: MONITORING (315°) -->
+                  <div class="ref-orbital-node node-green" id="nodeMonitoring" style="top: 155px; right: 10px;" title="Monitoring Node">
+                    <span class="ref-orbital-icon">📈</span>
+                    <span class="ref-orbital-label">MONITORING</span>
+                  </div>
+
+                  <!-- Bottom Right: WAITING (270°) -->
+                  <div class="ref-orbital-node node-purple" id="nodeWaiting" style="bottom: 25px; right: 40px;" title="Waiting Node">
+                    <span class="ref-orbital-icon">⏳</span>
+                    <span class="ref-orbital-label">WAITING</span>
+                  </div>
+                </div>
+
+                <!-- Pedestal with Equalizer & Mic Button -->
+                <div class="ref-core-pedestal">
+                  <!-- Left Equalizer Waveform -->
+                  <div class="ref-pedestal-waveform" id="refPedestalWaveLeft">
+                    <div class="ref-waveform-bar" style="height:6px;"></div>
+                    <div class="ref-waveform-bar" style="height:12px;"></div>
+                    <div class="ref-waveform-bar" style="height:18px;"></div>
+                    <div class="ref-waveform-bar" style="height:9px;"></div>
+                    <div class="ref-waveform-bar" style="height:14px;"></div>
+                  </div>
+
+                  <!-- Center Mic Trigger -->
+                  <button class="ref-pedestal-mic-btn" id="btnVoiceToggle" title="Click to Speak or Toggle Continuous Listening">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+                      <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                      <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                    </svg>
+                  </button>
+
+                  <!-- Status Label -->
+                  <span class="ref-pedestal-status" id="coreStatusLabel">LISTENING</span>
+
+                  <!-- Right Equalizer Waveform -->
+                  <div class="ref-pedestal-waveform" id="refPedestalWaveRight">
+                    <div class="ref-waveform-bar" style="height:14px;"></div>
+                    <div class="ref-waveform-bar" style="height:9px;"></div>
+                    <div class="ref-waveform-bar" style="height:18px;"></div>
+                    <div class="ref-waveform-bar" style="height:12px;"></div>
+                    <div class="ref-waveform-bar" style="height:6px;"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- RIGHT COLUMN: AGENT NETWORK & NOTIFICATIONS & APPROVAL CENTER -->
+              <div style="display:flex; flex-direction:column; gap:10px;">
+                <!-- CARD 1: AGENT NETWORK CONSTELLATION -->
+                <div class="ref-card">
+                  <div class="ref-card-header">
+                    <span class="ref-card-title">
+                      <span>🤖</span> AGENT NETWORK
+                    </span>
+                    <span class="ref-card-link" id="btnViewAllAgents">View All Agents →</span>
+                  </div>
+                  <div class="ref-constellation-container">
+                    <canvas id="refConstellationCanvas" width="300" height="135"></canvas>
+                  </div>
+                </div>
+
+                <!-- CARD 2: NOTIFICATIONS (5) -->
+                <div class="ref-card">
+                  <div class="ref-card-header">
+                    <span class="ref-card-title">
+                      <span>🔔</span> NOTIFICATIONS <span style="color:#00e5ff; font-family:var(--font-mono);">(5)</span>
+                    </span>
+                    <span class="ref-card-link" id="btnViewAllNotifs">View All →</span>
+                  </div>
+                  <div id="refNotifsList">
+                    <div class="ref-notif-row">
+                      <div class="ref-notif-dot green"></div>
+                      <div class="ref-notif-content">
+                        <div class="ref-notif-title">Research completed</div>
+                        <div class="ref-notif-desc">Shopify market analysis ready</div>
+                      </div>
+                      <div class="ref-notif-time">Now</div>
+                    </div>
+                    <div class="ref-notif-row">
+                      <div class="ref-notif-dot amber"></div>
+                      <div class="ref-notif-content">
+                        <div class="ref-notif-title">Approval required</div>
+                        <div class="ref-notif-desc">Install Python package: playwright</div>
+                      </div>
+                      <div class="ref-notif-time">3m ago</div>
+                    </div>
+                    <div class="ref-notif-row">
+                      <div class="ref-notif-dot red"></div>
+                      <div class="ref-notif-content">
+                        <div class="ref-notif-title">System alert</div>
+                        <div class="ref-notif-desc">High memory usage (87%)</div>
+                      </div>
+                      <div class="ref-notif-time">12m ago</div>
+                    </div>
+                    <div class="ref-notif-row">
+                      <div class="ref-notif-dot blue"></div>
+                      <div class="ref-notif-content">
+                        <div class="ref-notif-title">Email summary ready</div>
+                        <div class="ref-notif-desc">12 new important emails</div>
+                      </div>
+                      <div class="ref-notif-time">18m ago</div>
+                    </div>
+                    <div class="ref-notif-row">
+                      <div class="ref-notif-dot green"></div>
+                      <div class="ref-notif-content">
+                        <div class="ref-notif-title">Task completed</div>
+                        <div class="ref-notif-desc">UI audit report generated</div>
+                      </div>
+                      <div class="ref-notif-time">25m ago</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- CARD 3: APPROVAL CENTER (1) -->
+                <div class="ref-card">
+                  <div class="ref-card-header">
+                    <span class="ref-card-title">
+                      <span>🛡️</span> APPROVAL CENTER <span style="color:#ffab00; font-family:var(--font-mono);">(1)</span>
+                    </span>
+                    <span class="ref-card-link" id="btnReviewApproval" style="color:#ffab00;">Review →</span>
+                  </div>
+
+                  <div class="ref-approval-card" id="refApprovalCard">
+                    <div class="ref-approval-header">
+                      <div>
+                        <div class="ref-approval-title">Install Python package</div>
+                        <div style="font-family:var(--font-mono); font-size:9px; color:#e0f7fa;">playwright</div>
+                      </div>
+                      <div class="ref-risk-badge">Risk: Medium</div>
+                    </div>
+                    <div class="ref-approval-specs">
+                      <div>✔ Access: System environment</div>
+                      <div>✔ Purpose: Browser automation</div>
+                      <div>✔ Reversible: Yes</div>
+                    </div>
+                    <div class="ref-approval-btns">
+                      <button class="ref-approve-btn" id="btnInlineApprove">Approve</button>
+                      <button class="ref-deny-btn" id="btnInlineDeny">Deny</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- BOTTOM ROW: MULTI-TAB CONVERSATION DECK (LEFT) | SYSTEM MONITOR & TOP PROCESSES (RIGHT) -->
+            <div class="ref-bottom-row">
+
+              <!-- LEFT / CENTER: MULTI-TAB CONVERSATION DECK -->
+              <div class="ref-conv-deck">
+                <!-- Tab Header -->
+                <div class="ref-conv-tabs-bar" id="refConvTabsBar">
+                  <div class="ref-conv-tab active" data-tab="conversation">💬 CONVERSATION</div>
+                  <div class="ref-conv-tab" data-tab="research">🌐 RESEARCH</div>
+                  <div class="ref-conv-tab" data-tab="business">💼 BUSINESS INTEL</div>
+                  <div class="ref-conv-tab" data-tab="memory">🧠 MEMORY</div>
+                  <div class="ref-conv-tab" data-tab="monitor">📊 SYSTEM MONITOR</div>
+                  <div class="ref-conv-tab" data-tab="diagnostics">💻 DIAGNOSTICS</div>
+                  <div class="ref-conv-tab" id="btnAddNewTab" style="font-size:12px; font-weight:800; color:#00e5ff;">＋</div>
+                </div>
+
+                <!-- Deck Body with History Sidebar + Active Chat Stream -->
+                <div class="ref-conv-body-split">
+                  <!-- Left Mini Chat History Sidebar -->
+                  <div class="ref-chat-history-sidebar">
+                    <button class="ref-new-chat-btn" id="btnNewChat">
+                      <span>＋</span> New Chat
+                    </button>
+                    <input type="text" class="ref-search-chat-input" id="inpSearchChats" placeholder="Search conversations...">
+                    
+                    <div class="ref-session-list" id="refSessionList">
+                      <div class="ref-session-item active">
+                        <div class="ref-session-title">Shopify Micro-SaaS Strategy</div>
+                        <div class="ref-session-time">Today, 15:45</div>
+                      </div>
+                      <div class="ref-session-item">
+                        <div class="ref-session-title">UI Enhancement Plan</div>
+                        <div class="ref-session-time">Today, 14:20</div>
+                      </div>
+                      <div class="ref-session-item">
+                        <div class="ref-session-title">Marketing Campaign Ideas</div>
+                        <div class="ref-session-time">Today, 11:12</div>
+                      </div>
+                      <div class="ref-session-item">
+                        <div class="ref-session-title">System Optimization</div>
+                        <div class="ref-session-time">Yesterday, 18:30</div>
+                      </div>
+                      <div class="ref-session-item">
+                        <div class="ref-session-title">Research: AI Models</div>
+                        <div class="ref-session-time">Yesterday, 14:05</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Right Active Chat Stream -->
+                  <div class="ref-chat-stream-column">
+                    <div class="ref-chat-messages" id="dedicatedChatMessages">
+                      <!-- User Bubble -->
+                      <div class="ref-chat-bubble" style="background:rgba(0,136,255,0.12); border-color:rgba(0,136,255,0.35); align-self:flex-end; max-width:85%;">
+                        <div class="ref-bubble-header">
+                          <span class="ref-bubble-author" style="color:#00aaff;">👤 You</span>
+                          <span class="ref-bubble-time">15:52</span>
+                        </div>
+                        <div class="ref-bubble-text">
+                          Analyze the current UI and propose improvements for a next-generation command center.
+                        </div>
+                      </div>
+
+                      <!-- Assistant Bubble -->
+                      <div class="ref-chat-bubble" style="max-width:92%;">
+                        <div class="ref-bubble-header">
+                          <span class="ref-bubble-author">🤖 J.A.R.V.I.S.</span>
+                          <span class="ref-bubble-time">15:53</span>
+                        </div>
+                        <div class="ref-bubble-text">
+                          I'll analyze the current interface and create a comprehensive UI enhancement plan for a next-generation J.A.R.V.I.S. command center. I'll review the current architecture, identify opportunities, and design a modern, more advanced interface while maintaining all existing functionality.
+                        </div>
+
+                        <!-- Step Pipeline Tracker -->
+                        <div class="ref-step-pipeline">
+                          <span class="ref-step-pill done">✔ Analyzing current UI</span>
+                          <span class="ref-step-pill done">✔ Reviewing components</span>
+                          <span class="ref-step-pill active">● Designing improvements</span>
+                          <span class="ref-step-pill">○ Generating proposal</span>
+                        </div>
+
+                        <!-- Specialist Tags -->
+                        <div class="ref-tags-row">
+                          <span>Working with:</span>
+                          <span class="ref-tag-item">🎨 Frontend Agent</span>
+                          <span class="ref-tag-item">🔍 UI/UX Analysis</span>
+                          <span class="ref-tag-item">⚙️ Design System</span>
+                          <span class="ref-tag-item">⚡ Real-time Integration</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Bottom Chat Composer -->
+                    <div class="ref-chat-composer">
+                      <div class="ref-composer-pill">
+                        <span style="font-size:14px; cursor:pointer;" title="Attach file">📎</span>
+                        <input type="text" class="ref-composer-input" id="cmdInput" placeholder="Type a message or press / for commands..." autocomplete="off">
+                        <span style="font-size:13px; color:rgba(224,247,250,0.5); cursor:pointer;" title="Insert code">〈/〉</span>
+                        
+                        <select class="ref-model-select-pill" id="selMainModel">
+                          <option value="agy/gemini-3.7-flash-low" selected>⚡ Antigravity: Gemini 3.7 Flash</option>
+                          <option value="agy/gemini-3.8-flash-high">⚡ Antigravity: Gemini 3.8 Flash High</option>
+                          <option value="agy/claude-sonnet-4-6">🧠 Antigravity: Claude Sonnet 4.6</option>
+                          <option value="auto/chat">🧭 OmniRoute: Auto Fast Chat</option>
+                          <option value="local/autonomous">🛡️ Local Autonomous Brain</option>
+                        </select>
+
+                        <button class="ref-composer-send-btn" id="btnSend">Send ❯❯</button>
+                      </div>
+
+                      <button class="ref-composer-mic-btn" id="btnDedicatedChatMic" title="Voice Input">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                          <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- RIGHT COLUMN: SYSTEM MONITOR & TOP PROCESSES -->
+              <div style="display:flex; flex-direction:column; gap:10px;">
+                <!-- CARD 1: SYSTEM MONITOR (4 SPARKLINE CARDS) -->
+                <div class="ref-card">
+                  <div class="ref-card-header">
+                    <span class="ref-card-title">
+                      <span>📈</span> SYSTEM MONITOR
+                    </span>
+                    <span class="ref-card-link" id="btnExpandMonitor">Expand →</span>
+                  </div>
+
+                  <div class="ref-sys-monitor-grid">
+                    <!-- CPU Sparkline -->
+                    <div class="ref-sparkline-card">
+                      <div class="ref-sparkline-meta">
+                        <span>CPU Usage</span>
+                        <span class="ref-sparkline-val cyan" id="refMonitorCpuVal">21%</span>
+                      </div>
+                      <canvas class="ref-sparkline-canvas" id="canvasCpuSpark"></canvas>
+                    </div>
+
+                    <!-- RAM Sparkline -->
+                    <div class="ref-sparkline-card">
+                      <div class="ref-sparkline-meta">
+                        <span>RAM Usage</span>
+                        <span class="ref-sparkline-val purple" id="refMonitorRamVal">54%</span>
+                      </div>
+                      <canvas class="ref-sparkline-canvas" id="canvasRamSpark"></canvas>
+                    </div>
+
+                    <!-- GPU Sparkline -->
+                    <div class="ref-sparkline-card">
+                      <div class="ref-sparkline-meta">
+                        <span>GPU Usage</span>
+                        <span class="ref-sparkline-val green" id="refMonitorGpuVal">37%</span>
+                      </div>
+                      <canvas class="ref-sparkline-canvas" id="canvasGpuSpark"></canvas>
+                    </div>
+
+                    <!-- Network Sparkline -->
+                    <div class="ref-sparkline-card">
+                      <div class="ref-sparkline-meta">
+                        <span>Network I/O</span>
+                        <span class="ref-sparkline-val cyan" id="refMonitorNetVal">4.9 / 4.8 MB/s</span>
+                      </div>
+                      <canvas class="ref-sparkline-canvas" id="canvasNetSpark"></canvas>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- CARD 2: TOP PROCESSES TABLE -->
+                <div class="ref-card" style="flex:1;">
+                  <div class="ref-card-header">
+                    <span class="ref-card-title">
+                      <span>💻</span> TOP PROCESSES
+                    </span>
+                    <span class="ref-card-link" id="btnViewAllProc">View All →</span>
+                  </div>
+
+                  <table class="ref-proc-table" id="processTable">
+                    <tbody>
+                      <tr>
+                        <td class="ref-proc-name">🟢 node.exe</td>
+                        <td class="ref-proc-mem">1.1 GB</td>
+                        <td class="ref-proc-cpu">12.4%</td>
+                      </tr>
+                      <tr>
+                        <td class="ref-proc-name">🟡 chrome.exe</td>
+                        <td class="ref-proc-mem">546 MB</td>
+                        <td class="ref-proc-cpu">6.2%</td>
+                      </tr>
+                      <tr>
+                        <td class="ref-proc-name">🔵 Antigravity.exe</td>
+                        <td class="ref-proc-mem">364 MB</td>
+                        <td class="ref-proc-cpu">4.8%</td>
+                      </tr>
+                      <tr>
+                        <td class="ref-proc-name">🐍 python.exe</td>
+                        <td class="ref-proc-mem">298 MB</td>
+                        <td class="ref-proc-cpu">3.1%</td>
+                      </tr>
+                      <tr>
+                        <td class="ref-proc-name">🔷 Code.exe</td>
+                        <td class="ref-proc-mem">256 MB</td>
+                        <td class="ref-proc-cpu">2.9%</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+
+        <!-- PRESERVED WORKSPACES 2 TO 9 (FOR FULL SUITE ACCESSIBILITY) -->
+        <!-- WORKSPACE 2: NEURAL CHAT -->
+        <div class="workspace-view" id="workspaceChat">
+          <div class="workspace-page">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">💬 NEURAL CONVERSATION</span>
+                <span class="workspace-tag">DIRECT HIGH-SPEED DIALOGUE</span>
+              </div>
+              <button class="hud-btn" id="btnClearDedicatedChat" style="border-color:#ff3344; color:#ff3344;">CLEAR TRANSCRIPT</button>
+            </div>
+            <div class="chat-messages-container" style="flex:1; overflow-y:auto; padding:10px;"></div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE 3: AGENT NETWORK (SPECIALISTS) -->
+        <div class="workspace-view" id="workspaceAgents">
+          <div class="workspace-page">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">🤖 AGENT NETWORK</span>
+                <span class="workspace-tag">9 SPECIALIST AUTONOMOUS AGENTS</span>
+              </div>
+              <button class="hud-btn" id="btnOpenArtifactsFromSpec" style="border-color:#38ef7d; color:#38ef7d;">📂 OPEN DESKTOP FILES</button>
+            </div>
+            <div style="display:flex; flex:1; gap:14px; min-height:0; overflow:hidden;">
+              <div style="width:240px; background:var(--hud-panel-bg); border:1px solid var(--hud-border); border-radius:var(--radius-md); padding:10px; display:flex; flex-direction:column; gap:6px;">
+                <button class="spec-tab-btn active" data-spec="coding">💻 Coding & Software</button>
+                <button class="spec-tab-btn" data-spec="research">🌐 Research & Intel</button>
+                <button class="spec-tab-btn" data-spec="qa">🧪 QA & Testing</button>
+                <button class="spec-tab-btn" data-spec="marketing">📣 Marketing Strategist</button>
+                <button class="spec-tab-btn" data-spec="seo">🎯 Eventbrite & SEO</button>
+                <button class="spec-tab-btn" data-spec="leadgen">📬 B2B Lead Gen</button>
+                <button class="spec-tab-btn" data-spec="wordpress">🧩 WordPress & CMS</button>
+                <button class="spec-tab-btn" data-spec="business">📊 Business & Crypto</button>
+                <button class="spec-tab-btn" data-spec="system">⚙️ Windows Systems</button>
+              </div>
+              <div style="flex:1; display:flex; flex-direction:column; background:var(--hud-panel-bg); border:1px solid var(--hud-border); border-radius:var(--radius-md); padding:16px; overflow-y:auto;">
+                <div id="specAgentHeader">
+                  <div id="specAgentTitle" style="font-size:16px; font-weight:700; color:#00e5ff; font-family:var(--font-display);">Coding & Software Engineer</div>
+                  <div id="specAgentDesc" style="font-size:11px; color:rgba(224,247,250,0.8); font-family:var(--font-mono); margin-top:4px;">Production-grade script & application generation saved directly to Desktop.</div>
+                </div>
+                <textarea class="hud-input" id="inpSpecPrompt" rows="3" placeholder="Enter mission directive..." style="margin-top:10px;"></textarea>
+                <button class="hud-btn" id="btnDispatchSpecialist" style="border-color:#38ef7d; color:#38ef7d; font-weight:700; padding:6px 14px; margin-top:10px; align-self:flex-start;">DISPATCH AGENT</button>
+                <div class="spec-output-deck" id="specOutputDeck" style="flex:1; min-height:180px; background:rgba(0,10,20,0.7); border:1px solid rgba(0,229,255,0.3); border-radius:4px; padding:12px; font-family:var(--font-mono); font-size:11px; overflow-y:auto; line-height:1.5; color:#e0f7fa; margin-top:10px;">
+                  Select a specialist and click 'DISPATCH AGENT'.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE 4: OPERATIONS & TASKS -->
+        <div class="workspace-view" id="workspaceOperations">
+          <div class="workspace-page">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">⚡ OPERATIONS & ACTIVE TASKS</span>
+                <span class="workspace-tag">MASTER ORCHESTRATOR</span>
+              </div>
+              <button class="hud-btn" id="btnRefreshOps" style="border-color:#00e5ff; color:#00e5ff;">REFRESH PIPELINE</button>
+            </div>
+            <div class="ops-grid">
+              <div class="ops-pipeline-card">
+                <div class="metric-header" style="margin-bottom:12px;">
+                  <span class="metric-label">ACTIVE TASK QUEUE & EVIDENCE</span>
+                </div>
+                <div id="opsFullTaskList" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:10px;"></div>
+              </div>
+              <div class="ops-pipeline-card">
+                <div class="metric-header" style="margin-bottom:12px;"><span class="metric-label">SECURITY & APPROVALS</span></div>
+                <div style="font-family:var(--font-body); font-size:13px; color:#e0f7fa;">
+                  <div>Explicit confirmation required for privileged operations.</div>
+                  <div style="margin-top:10px; padding:8px; background:rgba(56,239,125,0.1); border:1px solid #38ef7d; color:#38ef7d; font-family:var(--font-mono); font-size:11px;">
+                    SECURITY PROTOCOL: NOMINAL
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE 5: RESEARCH & INTEL -->
+        <div class="workspace-view" id="workspaceResearch">
+          <div class="workspace-page">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">🌐 RESEARCH & WEB INTELLIGENCE</span>
+                <span class="workspace-tag">CHROME SCRAPER</span>
+              </div>
+            </div>
+            <div style="background:var(--hud-panel-bg); border:1px solid var(--hud-border); border-radius:var(--radius-md); padding:16px;">
+              <input type="text" class="hud-input" id="txtResearchTopic" placeholder="e.g. AI automation agency retainers, competitor pricing, URL...">
+              <div style="display:flex; gap:10px; margin-top:10px;">
+                <select class="hud-select" id="selResearchMode" style="flex:1;">
+                  <option value="deep">Deep Autonomous Research (Live Search + Scrape)</option>
+                  <option value="search_only">Live Chrome Web Search</option>
+                  <option value="browse_url">Browse & Scrape Target URL</option>
+                </select>
+              </div>
+              <div style="display:flex; gap:10px; margin-top:10px;">
+                <button class="hud-btn" id="btnExecBrowserResearch" style="border-color:#00e5ff; color:#00e5ff;">DEPLOY CHROME RESEARCH AGENT</button>
+                <button class="hud-btn" id="btnOpenGoogleJarvis">OPEN GOOGLE IN CHROME</button>
+                <button class="hud-btn" id="btnCaptureBrowserScreen">CAPTURE SCREEN</button>
+              </div>
+              <div id="researchOutputDeck" style="font-family:var(--font-mono); font-size:11px; background:rgba(0,10,20,0.7); padding:12px; border:1px solid rgba(0,229,255,0.3); border-radius:4px; max-height:300px; overflow-y:auto; margin-top:10px; color:#e0f7fa;">
+                Awaiting directive. Enter a topic or URL above.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE 6: MARKETING HUB -->
+        <div class="workspace-view" id="workspaceMarketing">
+          <div class="workspace-page">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">📣 MARKETING & WEALTH ACQUISITION</span>
+                <span class="workspace-tag">EVENTBRITE · ADS · EMAIL</span>
+              </div>
+            </div>
+            <div class="memory-tabs">
+              <button class="marketing-tab-btn active" data-tab="tabEventbrite">EVENTBRITE SEO</button>
+              <button class="marketing-tab-btn" data-tab="tabCampaigns">AD CAMPAIGNS</button>
+              <button class="marketing-tab-btn" data-tab="tabEmailBrowser">EMAIL COMMAND</button>
+            </div>
+            <div class="modal-body marketing-body" style="background:var(--hud-panel-bg); border:1px solid var(--hud-border); border-radius:var(--radius-md); padding:16px;">
+              <div class="mkt-tab-pane active" id="tabEventbrite">
+                <input type="text" class="hud-input" id="ebTopic" placeholder="Event Topic...">
+                <button class="hud-btn" id="btnGenEventbrite" style="margin-top:10px;">GENERATE SEO EVENTBRITE PACK</button>
+                <div class="mkt-output-box" id="ebOutput" style="display:none; margin-top:10px;"></div>
+              </div>
+              <div class="mkt-tab-pane" id="tabCampaigns">
+                <input type="text" class="hud-input" id="campProduct" placeholder="Product Name...">
+                <button class="hud-btn" id="btnGenCampaign" style="margin-top:10px;">DEPLOY MARKETING COPY ENGINE</button>
+                <div class="mkt-output-box" id="campOutput" style="display:none; margin-top:10px;"></div>
+              </div>
+              <div class="mkt-tab-pane" id="tabEmailBrowser">
+                <div style="display:flex; gap:10px; margin-bottom:10px;">
+                  <button class="hud-btn" id="btnLaunchDedicatedChrome">LAUNCH DEDICATED CHROME</button>
+                  <button class="hud-btn" id="btnScanInboxNow">SCAN INBOX NOW</button>
+                </div>
+                <div id="emailScanResults" style="font-family:var(--font-mono); font-size:11px; background:rgba(0,10,20,0.6); padding:10px; border-radius:4px;">Click 'SCAN INBOX' to retrieve unread emails.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE 7: MEMORY VAULT -->
+        <div class="workspace-view" id="workspaceMemory">
+          <div class="workspace-page">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">🧠 PERMANENT MEMORY VAULT</span>
+                <span class="workspace-tag">SQLITE RAG ENGINE</span>
+              </div>
+            </div>
+            <div class="memory-tabs">
+              <button class="mem-tab-btn active" data-tab="tabFacts">USER PREFERENCES</button>
+              <button class="mem-tab-btn" data-tab="tabKnowledge">RESEARCHED INTEL</button>
+              <button class="mem-tab-btn" data-tab="tabAddFact">+ COMMIT FACT</button>
+            </div>
+            <div class="modal-body memory-body" style="background:var(--hud-panel-bg); border:1px solid var(--hud-border); border-radius:var(--radius-md); padding:16px;">
+              <div class="tab-pane active" id="tabFacts">
+                <div id="memFactList" class="fact-list"></div>
+              </div>
+              <div class="tab-pane" id="tabKnowledge">
+                <div id="memKnowledgeList" class="fact-list"></div>
+              </div>
+              <div class="tab-pane" id="tabAddFact">
+                <input type="text" class="hud-input" id="newFactKey" placeholder="Fact Key (e.g. Preferred Tone)">
+                <input type="text" class="hud-input" id="newFactValue" placeholder="Fact Value (e.g. Concise Stark Mode)" style="margin-top:8px;">
+                <button class="hud-btn" id="btnSaveNewFact" style="margin-top:10px;">SAVE TO MEMORY</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE 8: SYSTEM DIAGNOSTICS -->
+        <div class="workspace-view" id="workspaceDiagnostics">
+          <div class="workspace-page">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">💻 SYSTEM DIAGNOSTICS & TELEMETRY</span>
+                <span class="workspace-tag">HIGH FREQUENCY PSUTIL</span>
+              </div>
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:14px;">
+              <div class="ops-pipeline-card">
+                <div class="metric-header"><span class="metric-label">CPU ARCHITECTURE</span></div>
+                <div style="font-family:var(--font-mono); font-size:12px; color:#e0f7fa; line-height:1.6; margin-top:8px;">
+                  <div>• Host Platform: Windows 11 Pro 64-bit</div>
+                  <div>• Core Matrix: 16 Logical Threads</div>
+                  <div>• Active Sampling: 2 Hz (Every 500ms)</div>
+                </div>
+              </div>
+              <div class="ops-pipeline-card">
+                <div class="metric-header"><span class="metric-label">LOCAL RUNTIME PORTS</span></div>
+                <div style="font-family:var(--font-mono); font-size:12px; color:#e0f7fa; line-height:1.6; margin-top:8px;">
+                  <div>• FastAPI Server: Port 8000 (Active)</div>
+                  <div>• OmniRoute Gateway: Port 20128 (Connected)</div>
+                  <div>• WebSockets: /ws/chat, /ws/telemetry</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE 9: SETTINGS -->
+        <div class="workspace-view" id="workspaceSettings">
+          <div class="workspace-page">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">⚙️ SETTINGS & PROTOCOLS</span>
+                <span class="workspace-tag">OS CONFIGURATION</span>
+              </div>
+              <button class="hud-btn" id="btnSaveConfig" style="border-color:#38ef7d; color:#38ef7d; font-weight:700;">COMMIT SETTINGS</button>
+            </div>
+            <div style="max-width:650px; background:var(--hud-panel-bg); border:1px solid var(--hud-border); border-radius:var(--radius-md); padding:16px;">
+              <div class="form-group">
+                <label class="form-label">SYNTHETIC VOICE ENGINE PRESET</label>
+                <select class="hud-select" id="cfgVoiceSelect" style="margin-top:6px;"></select>
+              </div>
+              <div class="form-group" style="margin-top:14px;">
+                <label class="form-label">AUDIO SOUND EFFECTS</label>
+                <label class="hud-toggle" style="margin-top:6px;">
+                  <input type="checkbox" id="cfgSoundFx" checked>
+                  <span class="toggle-slider"></span>
+                  <span class="toggle-text">Enable Sci-Fi Synthetic Chimes</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE 10: SPATIAL INTELLIGENCE / GOD'S EYE VIEW -->
+        <div class="workspace-view" id="workspaceSpatial">
+          <div class="spatial-workspace-container">
+            <!-- 3D Earth Globe Viewport -->
+            <div id="spatialGlobeContainer" class="spatial-globe-viewport"></div>
+
+            <!-- Stark HUD Top Holographic Telemetry Bar -->
+            <div class="spatial-top-telemetry-bar">
+              <div class="spatial-hud-pill"><span class="pill-label">TARGET:</span> <span id="hudSpatialTargetName" class="pill-val">WORLD OVERVIEW</span></div>
+              <div class="spatial-hud-pill"><span class="pill-label">LAT:</span> <span id="hudSpatialLat" class="pill-val">+20.0000°</span></div>
+              <div class="spatial-hud-pill"><span class="pill-label">LON:</span> <span id="hudSpatialLon" class="pill-val">+0.0000°</span></div>
+              <div class="spatial-hud-pill"><span class="pill-label">RANGE:</span> <span id="hudSpatialAlt" class="pill-val">20,000 KM</span></div>
+              <div class="spatial-hud-pill" id="spatialGovernorPill"><span class="pill-label">GOVERNOR:</span> <span id="hudSpatialGovernor" class="pill-val" style="color:#00ffcc;">BALANCED · 60 FPS</span></div>
+            </div>
+
+            <!-- Right-Side Spatial Intelligence Panel -->
+            <div class="spatial-intel-deck" id="spatialIntelDeck">
+              <div class="spatial-deck-header">
+                <span class="spatial-deck-title">SPATIAL INTEL</span>
+                <span class="spatial-badge" id="spatialCommandStatusBadge">READY</span>
+              </div>
+
+              <!-- Selected Entity Inspector -->
+              <div class="spatial-entity-card" id="spatialEntityInspector">
+                <div class="entity-card-title" id="spatialEntityTitle">NO ENTITY SELECTED</div>
+                <div class="entity-card-body" id="spatialEntityMeta">
+                  <div class="entity-stat-placeholder">Click any flight, ship, or satellite to inspect live telemetry.</div>
+                </div>
+              </div>
+
+              <!-- Active Layer Quick Toggles -->
+              <div class="spatial-layers-box">
+                <div class="spatial-section-title">GEOSPATIAL LAYERS</div>
+                <div class="spatial-layer-grid">
+                  <button class="spatial-layer-chip active" data-layer="flights">✈ FLIGHTS</button>
+                  <button class="spatial-layer-chip" data-layer="vessels">⚓ SHIPS</button>
+                  <button class="spatial-layer-chip" data-layer="satellites">🛰 SATELLITES</button>
+                  <button class="spatial-layer-chip active" data-layer="weather">⚡ WEATHER</button>
+                  <button class="spatial-layer-chip" data-layer="firms">🔥 FIRES</button>
+                  <button class="spatial-layer-chip" data-layer="earthquakes">🌊 QUAKES</button>
+                  <button class="spatial-layer-chip" data-layer="cctv">🎥 CCTV</button>
+                  <button class="spatial-layer-chip" data-layer="radio">📻 RADIO</button>
+                </div>
+              </div>
+
+              <!-- Visual Sensor Presets -->
+              <div class="spatial-styles-box">
+                <div class="spatial-section-title">SENSOR MODES</div>
+                <div class="spatial-style-grid">
+                  <button class="spatial-style-btn active" data-style="normal">STANDARD</button>
+                  <button class="spatial-style-btn" data-style="surveillance">NVG</button>
+                  <button class="spatial-style-btn" data-style="thermal">FLIR THERMAL</button>
+                  <button class="spatial-style-btn" data-style="retro">CRT RETRO</button>
+                  <button class="spatial-style-btn" data-style="noir">NOIR</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Bottom Spatial Command Bar -->
+            <div class="spatial-bottom-command-bar">
+              <div class="spatial-quick-actions">
+                <button class="spatial-cmd-btn" id="btnSpatialHomeGlobe">🌐 GLOBAL</button>
+                <button class="spatial-cmd-btn" id="btnSpatialTokyo">🗼 TOKYO</button>
+                <button class="spatial-cmd-btn" id="btnSpatialLondon">🎡 LONDON</button>
+                <button class="spatial-cmd-btn" id="btnSpatialNYC">🗽 NEW YORK</button>
+                <button class="spatial-cmd-btn" id="btnSpatialSF">🌉 SAN FRANCISCO</button>
+                <button class="spatial-cmd-btn" id="btnSpatialDhaka">📍 DHAKA</button>
+                <button class="spatial-cmd-btn" id="btnSpatialCockpit">🎯 COCKPIT</button>
+              </div>
+              <div class="spatial-input-row">
+                <input type="text" id="inpSpatialCmd" class="spatial-input" placeholder="Enter spatial directive (e.g. 'Fly to Tokyo and show planes', 'Track nearest flight')..." />
+                <button id="btnSpatialSend" class="spatial-send-btn">DISPATCH</button>
+              </div>
+            </div>
+
+            <!-- Loading & Notification Overlay -->
+            <div class="spatial-loading-overlay" id="spatialLoadingOverlay" style="display:none;">
+              <div class="spatial-spinner"></div>
+              <div class="spatial-loading-label" id="spatialLoadingLabel">INITIALIZING SPATIAL INTELLIGENCE CORE...</div>
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div>
+
+    <!-- BOTTOM STATUS BAR (REFERENCE SPEC) -->
+    <footer class="ref-bottom-bar" id="refBottomBar">
+      <div class="ref-bottom-left">
+        <div class="ref-bottom-stat">
+          <span>SYSTEM UPTIME:</span>
+          <span class="val" id="uptimeLabel">1 day, 17:37:33</span>
+        </div>
+        <div class="ref-bottom-stat">
+          <span>VOICE MODE:</span>
+          <span class="val">Active (Wake Word)</span>
+        </div>
+        <div class="ref-bottom-stat">
+          <span>AUDIO ROUTE:</span>
+          <span class="val" id="refAudioRouteVal">Host PC Speakers</span>
+        </div>
+        <div class="ref-bottom-stat">
+          <span>MODEL:</span>
+          <span class="val" id="refModelVal">Antigravity: Gemini 3.7 Flash</span>
+        </div>
+        <div class="ref-bottom-stat">
+          <span>CONTEXT:</span>
+          <span class="val">128K tokens</span>
+        </div>
+        <div class="ref-bottom-stat">
+          <span>SAFETY:</span>
+          <span style="color:#00e676; font-weight:700;">● Normal</span>
+        </div>
+      </div>
+
+      <div class="ref-bottom-right">
+        <button class="ref-bottom-btn" id="btnOpenBrowserBottom">
+          <span>🌐</span> OPEN BROWSER
+        </button>
+        <button class="ref-bottom-btn" id="btnLockPcBottom">
+          <span>🔒</span> LOCK PC
+        </button>
+        <button class="ref-emergency-btn" id="btnEmergencyStopBottom" title="Emergency Stop (Esc)">
+          <span>🛑</span> EMERGENCY STOP
+        </button>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- GLOBAL OVERLAYS (COMMAND PALETTE, NOTIFICATIONS, APPROVAL) -->
+  <!-- COMMAND PALETTE (CTRL+K) -->
+  <div class="cmd-palette-backdrop" id="cmdPaletteModal">
+    <div class="cmd-palette-modal">
+      <div class="cmd-palette-header">
+        <span class="cmd-palette-search-icon">🔍</span>
+        <input type="text" class="cmd-palette-input" id="inpCmdPalette" placeholder="Type a command or jump to workspace..." autocomplete="off">
+        <span class="cmd-palette-esc">ESC</span>
+      </div>
+      <div class="cmd-palette-results" id="cmdPaletteResults"></div>
+    </div>
+  </div>
+
+  <!-- NOTIFICATION DRAWER -->
+  <aside class="notification-drawer" id="notificationDrawer">
+    <div class="notification-header">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="color:#00e5ff; font-size:16px;">🔔</span>
+        <span style="font-family:var(--font-display); font-size:13px; font-weight:700; color:#00e5ff;">NOTIFICATIONS</span>
+      </div>
+      <div style="display:flex; gap:6px;">
+        <button class="hud-btn" id="btnClearNotifications" style="padding:2px 8px; font-size:10px;">CLEAR</button>
+        <button class="modal-close" id="btnCloseNotifications" style="font-size:14px; cursor:pointer;">✕</button>
+      </div>
+    </div>
+    <div class="notification-list" id="notificationList">
+      <div class="notification-item">
+        <div>J.A.R.V.I.S. neural matrix initialized. All systems nominal.</div>
+        <div class="notification-time">System Startup</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- TOAST CONTAINER -->
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <!-- APPROVAL MODAL -->
+  <div class="modal-overlay" id="approvalModal">
+    <div class="modal-card approval-card" style="max-width:540px; border-color:#ffaa00; box-shadow:0 0 35px rgba(255,170,0,0.35);">
+      <div class="modal-header" style="border-bottom:1px solid rgba(255,170,0,0.4);">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:22px;">⚠️</span>
+          <div>
+            <span class="modal-title" style="color:#ffaa00;">DIRECTIVE AUTHORIZATION REQUIRED</span>
+            <div style="font-size:10px; font-family:var(--font-mono); color:#ffdd80;">SECURITY GOVERNANCE & SAFETY GATE</div>
+          </div>
+        </div>
+        <button class="modal-close" id="btnCloseApproval">✕</button>
+      </div>
+      <div class="modal-body" style="padding:16px;">
+        <div style="font-size:12px; font-family:var(--font-mono); margin-bottom:12px; color:#e0f7fa;">
+          Sir Shakil, this action has been classified as high-consequence. Your explicit authorization is required to proceed.
+        </div>
+        <div id="approvalTaskDetails" style="background:rgba(255,170,0,0.08); border-left:3px solid #ffaa00; padding:12px; font-family:var(--font-mono); font-size:12px; margin-bottom:16px; color:#fff; border-radius:2px;"></div>
+        <div style="display:flex; gap:12px; justify-content:flex-end;">
+          <button class="hud-btn" id="btnRejectApproval" style="border-color:#ff3344; color:#ff3344; background:rgba(255,51,68,0.12);">ABORT DIRECTIVE</button>
+          <button class="hud-btn" id="btnAuthorizeApproval" style="border-color:#38ef7d; color:#38ef7d; background:rgba(56,239,125,0.18); font-weight:700;">AUTHORIZE DIRECTIVE</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREENSHOT PREVIEW MODAL -->
+  <div class="modal-overlay" id="screenModal">
+    <div class="modal-card screen-card">
+      <div class="modal-header">
+        <span class="modal-title">VISUAL CAPTURE TELEMETRY</span>
+        <button class="modal-close" id="btnCloseScreen">✕</button>
+      </div>
+      <div class="modal-body screen-body">
+        <img id="screenPreviewImg" src="" alt="Capture Preview">
+      </div>
+    </div>
+  </div>
+
+  <!-- AUDIO MATRIX & HARDWARE ROUTING MODAL -->
+  <div class="modal-overlay" id="audioMatrixModal">
+    <div class="modal-card audio-matrix-card" style="max-width: 620px; border-color: #00e5ff; box-shadow: 0 0 35px rgba(0, 229, 255, 0.25);">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(0, 229, 255, 0.3);">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span style="font-size:22px;">🎧</span>
+          <div>
+            <span class="modal-title" style="color:#00e5ff;">AUDIO ROUTING MATRIX // SOUND HARNESS</span>
+            <div style="font-size:10px; font-family:var(--font-mono); color:#80deea;">MINI PC HARDWARE & BLUETOOTH / USB / 3.5MM DYNAMIC ADAPTER</div>
+          </div>
+        </div>
+        <button class="modal-close" id="btnCloseAudioMatrix" onclick="closeAudioMatrixModal()">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 20px; font-family: var(--font-mono);">
+        
+        <!-- MICROPHONE SECTION -->
+        <div style="margin-bottom: 22px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <label style="color:#00ffff; font-weight:700; font-size:12px; letter-spacing:1px;">🎙️ MICROPHONE (VOICE INPUT):</label>
+            <span id="audioMatrixActiveInLabel" style="font-size:11px; color:#38ef7d; background:rgba(56,239,125,0.12); padding:2px 8px; border-radius:4px; border:1px solid rgba(56,239,125,0.3);">ACTIVE: SCANNING...</span>
+          </div>
+          <select id="selAudioInput" class="hud-input" style="width:100%; margin-bottom:10px; background:#041426; border-color:rgba(0,229,255,0.4); color:#fff; font-size:12px; padding:8px;">
+            <option value="auto">⚡ AUTO-SENSE (Smart failover between Bluetooth / USB / 3.5mm)</option>
+          </select>
+          
+          <!-- Live VU Level Meter -->
+          <div style="background:rgba(0,0,0,0.5); border:1px solid rgba(0,229,255,0.25); border-radius:4px; padding:10px; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; font-size:10px; color:#888; margin-bottom:4px;">
+              <span>MICROPHONE SIGNAL SENSITIVITY</span>
+              <span id="lblMicEnergyVal">0.0 dB</span>
+            </div>
+            <div style="height:10px; background:#071c2c; border-radius:3px; overflow:hidden; display:flex;">
+              <div id="barMicEnergy" style="width:0%; height:100%; background:linear-gradient(90deg, #00e5ff, #38ef7d, #ffdd00, #ff3344); transition:width 0.1s ease; border-radius:3px;"></div>
+            </div>
+          </div>
+          <div style="display:flex; gap:10px;">
+            <button class="hud-btn" id="btnTestMic" onclick="testMicHardware()" style="flex:1; border-color:#00e5ff; color:#00e5ff; font-size:11px;">🎤 TEST LIVE MIC INPUT</button>
+          </div>
+        </div>
+
+        <!-- SPEAKER SECTION -->
+        <div style="margin-bottom: 22px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <label style="color:#d500f9; font-weight:700; font-size:12px; letter-spacing:1px;">🔊 SPEAKER (VOICE OUTPUT):</label>
+            <span id="audioMatrixActiveOutLabel" style="font-size:11px; color:#d500f9; background:rgba(213,0,249,0.12); padding:2px 8px; border-radius:4px; border:1px solid rgba(213,0,249,0.3);">ACTIVE: SCANNING...</span>
+          </div>
+          <select id="selAudioOutput" class="hud-input" style="width:100%; margin-bottom:10px; background:#041426; border-color:rgba(213,0,249,0.4); color:#fff; font-size:12px; padding:8px;">
+            <option value="auto">⚡ AUTO-SENSE (Windows Default Audio Device)</option>
+          </select>
+          <div style="display:flex; gap:10px;">
+            <button class="hud-btn" id="btnTestSpeaker" onclick="testSpeakerHardware()" style="flex:1; border-color:#d500f9; color:#d500f9; font-size:11px;">🔊 TEST JARVIS SPEAKER VOICE</button>
+          </div>
+        </div>
+
+        <div style="background:rgba(0,229,255,0.06); border-left:3px solid #00e5ff; padding:10px; font-size:11px; color:#b2ebf2; border-radius:2px; margin-bottom:16px;">
+          💡 <strong>Mini PC Universal Audio:</strong> Any connected Bluetooth headset (like QCY SP7, Mcdodo), USB microphone, or 3.5mm jack device is supported. Select your device above or keep on <strong>AUTO-SENSE</strong> for dynamic automatic routing!
+        </div>
+
+        <div style="display:flex; gap:12px; justify-content:flex-end;">
+          <button class="hud-btn" onclick="closeAudioMatrixModal()" style="border-color:#888; color:#aaa;">CLOSE</button>
+          <button class="hud-btn" onclick="saveAudioMatrixSettings()" style="border-color:#38ef7d; color:#38ef7d; background:rgba(56,239,125,0.15); font-weight:700;">✓ APPLY & SAVE ROUTING</button>
+        </div>
+      </div>
+    </div>
+  <!-- Cybernetic Terminal Drawer -->
+  <div class="ref-terminal-drawer" id="refTerminalDrawer">
+    <div class="ref-terminal-header">
+      <div class="ref-terminal-title">
+        <span class="ref-terminal-dot"></span>
+        <span>MARK XVI TACTICAL KERNEL // LIVE WORKSTATION TERMINAL</span>
+        <span class="ref-terminal-badge" id="terminalStatusBadge">READY</span>
+      </div>
+      <div class="ref-terminal-actions">
+        <button class="ref-terminal-btn" onclick="clearTerminalLogs()" title="Clear Terminal Logs">CLEAR</button>
+        <button class="ref-terminal-btn" onclick="toggleTerminalDrawer()" title="Close Terminal (Press ~)">✕ CLOSE</button>
+      </div>
+    </div>
+    <div class="ref-terminal-body" id="refTerminalLogFeed">
+      <div class="term-line sys">[SYSTEM] J.A.R.V.I.S. Mark XVI Kernel Initialized. Workstation bridge connected.</div>
+      <div class="term-line sys">[HOTKEYS] Press ~ (tilde) to toggle this console anytime. Press Ctrl+K for Command Palette.</div>
+    </div>
+    <div class="ref-terminal-input-row">
+      <span class="ref-terminal-prompt">SHAKIL@JARVIS:~$</span>
+      <input type="text" class="ref-terminal-input" id="inpTerminalCmd" placeholder="Run PowerShell / Python command... (e.g. Get-Process, python --version)" autocomplete="off">
+      <button class="ref-terminal-exec-btn" id="btnExecTerminal" onclick="executeTerminalInput()">RUN ❯</button>
+    </div>
+  </div>
+
+  <!-- Spotlight Command Palette Modal (Ctrl + K / Ctrl + Space) -->
+  <div class="ref-cmd-palette-backdrop" id="refCmdPaletteModal" style="display:none;" onclick="handlePaletteBackdropClick(event)">
+    <div class="ref-cmd-palette-card">
+      <div class="ref-palette-search-row">
+        <span class="ref-palette-search-icon">🔍</span>
+        <input type="text" class="ref-palette-input" id="inpPaletteQuery" placeholder="Type a directive, agent name, theme, or shortcut..." autocomplete="off">
+        <span class="ref-palette-esc-hint">ESC to close</span>
+      </div>
+      <div class="ref-palette-results" id="refPaletteResults">
+        <!-- Rendered dynamically by hud.js -->
+      </div>
+      <div class="ref-palette-footer">
+        <span>Use <kbd>↑</kbd> <kbd>↓</kbd> to navigate</span>
+        <span><kbd>Enter</kbd> to execute</span>
+        <span><kbd>Esc</kbd> to dismiss</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- J.A.R.V.I.S. Spatial Intelligence (God's Eye View Subsystem) -->
+  <script type="module" src="/static/spatial/spatialService.js"></script>
+  <script src="/static/hud.js?v=mark16_stark_ref"></script>
+</body>
+</html>

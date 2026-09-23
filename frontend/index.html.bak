@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>J.A.R.V.I.S. // Shakil's Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;800;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/hud.css?v=mark16_advanced_os">
+  <style>
+    /* RESPONSIVE HUD STYLING */
+    html, body { 
+        margin: 0; 
+        padding: 0; 
+        height: 100vh;
+        background-color: #040810;
+        overflow: hidden;
+    }
+    .hud-container {
+        height: 100vh;
+        box-sizing: border-box;
+        border: 1px solid rgba(0, 240, 255, 0.25);
+        position: relative;
+        display: flex;
+        flex-direction: column;
+    }
+    .hud-header {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 14px;
+        gap: 12px;
+        z-index: 60;
+    }
+    .header-right {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        justify-content: flex-end;
+    }
+    .hud-btn {
+        padding: 5px 10px;
+        font-size: 11px;
+        white-space: nowrap;
+        letter-spacing: 0.8px;
+    }
+    .hud-main {
+        flex: 1;
+        min-height: 0;
+    }
+  </style>
+</head>
+<body>
+  <!-- Cyber Scanline Overlay -->
+  <div class="scanlines"></div>
+  <div class="grid-bg"></div>
+
+  <!-- Main Container -->
+  <div class="hud-container">
+    
+    <!-- TOP HEADER -->
+    <header class="hud-header">
+      <div class="hud-corner top-left"></div>
+      <div class="hud-corner top-right"></div>
+      
+      <div class="header-left">
+        <div class="brand-title">
+          <span class="stark-logo">STARK IND</span>
+          <span class="brand-text">J.A.R.V.I.S. <span class="accent">//</span> MARK XVI</span>
+        </div>
+        <div class="sys-badges">
+          <span class="badge" id="badgeCore"><span class="dot"></span> CORE: ONLINE</span>
+          <span class="badge" id="badgeWs"><span class="dot"></span> LINK: SYNCED</span>
+          <span class="badge" id="badgeVoice"><span class="dot"></span> VOICE: en-GB</span>
+          <span class="badge" id="badgeEvolution"><span class="dot" style="background:#ffaa00; box-shadow:0 0 8px #ffaa00;"></span> EVOLUTION: LVL 2 (4 NODES)</span>
+          <span class="badge badge-antigravity" id="badgeAntigravity" title="Google Antigravity SDK & Agent Runtime"><span class="dot" style="background:#00e5ff; box-shadow:0 0 8px #00e5ff;"></span> ANTIGRAVITY: CONNECTED</span>
+          <span class="badge badge-omniroute" id="badgeOmniroute" title="OmniRoute Free Multi-Model Intelligence Gateway"><span class="dot" style="background:#76ff03; box-shadow:0 0 8px #76ff03;"></span> OMNIROUTE: 1,189+ MODELS</span>
+          <span class="badge" id="badgeGateway" title="Model Gateway Circuit Breaker & Health"><span class="dot" style="background:#38ef7d; box-shadow:0 0 8px #38ef7d;"></span> GATEWAY: ONLINE</span>
+          <span class="badge" id="badgeBrowserProfile" title="Dedicated Chrome Profile Named 'Jarvis'"><span class="dot" style="background:#00e5ff; box-shadow:0 0 8px #00e5ff;"></span> CHROME: JARVIS</span>
+          <span class="badge" id="badgeMicStatus"><span class="dot" style="background:#00e5ff; box-shadow:0 0 8px #00e5ff;"></span> MIC: LISTENING</span>
+          <span class="badge" id="badgeTasks" title="Master Orchestrator Concurrency Guard"><span class="dot" style="background:#38ef7d; box-shadow:0 0 8px #38ef7d;"></span> TASKS: 0/2</span>
+        </div>
+      </div>
+
+      <div class="header-center" style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span id="currentWorkspaceHeaderBadge" class="workspace-tag" style="background:rgba(0,240,255,0.15); border-color:#00f0ff; color:#00f0ff; font-weight:700;">COMMAND CENTER</span>
+          <div class="hud-clock" id="hudClock">00:00:00</div>
+        </div>
+        <div class="hud-date" id="hudDate">INITIALIZING...</div>
+      </div>
+
+      <div class="header-right">
+        <!-- Workspace Selector -->
+        <div class="workspace-selector-wrap" style="display:inline-flex; align-items:center; gap:4px;">
+          <span style="font-family:'Rajdhani',sans-serif; font-size:11px; color:#00e5ff; font-weight:700;">WORKSPACE:</span>
+          <select id="selWorkspace" class="hud-select" style="background:#06141d; border:1px solid #00e5ff; color:#00e5ff; font-family:'Share Tech Mono',monospace; font-size:11px; padding:3px 6px; border-radius:3px; outline:none; cursor:pointer;" title="Select Isolated Workspace Context">
+            <option value="personal" selected>🏠 PERSONAL</option>
+            <option value="agency">💼 AGENCY</option>
+            <option value="crypto">📈 CRYPTO</option>
+            <option value="saas">🚀 SAAS</option>
+            <option value="systems">⚙️ SYSTEMS</option>
+            <option value="research">🔬 RESEARCH</option>
+          </select>
+        </div>
+
+        <!-- Global Action Triggers -->
+        <button class="hud-btn" id="btnOpenCmdPalette" style="border-color:#00e5ff; color:#00e5ff; background:rgba(0,229,255,0.1);" title="Command Palette (Ctrl+K)">🔍 COMMANDS (Ctrl+K)</button>
+        <button class="hud-btn" id="btnOpenNotifications" style="border-color:rgba(0,229,255,0.4); color:#e0f7fa;" title="Notifications & System Alerts">🔔 <span id="notificationBadgeCount" style="color:#00e5ff; font-weight:700;">0</span></button>
+        <button class="hud-btn" id="btnEmergencyAbort" style="border-color:#ff3344; background:rgba(255,51,68,0.25); color:#ff3344; font-weight:800;" title="Instant Hard Abort (<100ms) - [Esc]">🛑 ABORT</button>
+        <button class="hud-btn" id="btnOpenArtifactsFolder" style="border-color:#38ef7d; color:#38ef7d;" title="Open Desktop\Jarvis_Created_Files in Windows Explorer">📂 ARTIFACTS</button>
+        <button class="hud-btn" id="btnTestVoice" style="border-color:#38ef7d; color:#38ef7d;" title="Test Neural Voice & PC Speakers">🔊 TEST VOICE</button>
+        <button class="hud-btn" id="btnFullscreen" title="Fullscreen HUD">⛶ FULLSCREEN</button>
+
+        <!-- Legacy Quick Action Selectors (Linked to Workspaces) -->
+        <button class="hud-btn" id="btnOpenDedicatedChat" style="display:none;" title="Chat"></button>
+        <button class="hud-btn" id="btnSpecialistsDeck" style="display:none;" title="Specialists"></button>
+        <button class="hud-btn" id="btnBrowserResearchHeader" style="display:none;" title="Research"></button>
+        <button class="hud-btn" id="btnMarketingHub" style="display:none;" title="Marketing"></button>
+        <button class="hud-btn" id="btnJarvisBrowser" style="display:none;" title="Browser"></button>
+        <button class="hud-btn" id="btnMemoryVault" style="display:none;" title="Memory"></button>
+        <button class="hud-btn" id="btnDiagnostics" style="display:none;" title="Diagnostics"></button>
+        <button class="hud-btn" id="btnSettings" style="display:none;" title="Config"></button>
+      </div>
+    </header>
+
+    <!-- APPLICATION SHELL: NAVIGATION RAIL + MAIN VIEWPORT -->
+    <div class="app-shell">
+      
+      <!-- EXPANDABLE NAVIGATION RAIL -->
+      <nav class="nav-rail" id="mainNavRail" aria-label="J.A.R.V.I.S. Workspaces">
+        <div class="nav-rail-top">
+          <!-- Rail Expansion Toggle -->
+          <button class="nav-rail-toggle-btn" id="btnToggleRail" title="Toggle Navigation Rail (Alt+M)" aria-label="Toggle Navigation Rail">
+            <span class="nav-rail-icon">☰</span>
+          </button>
+          
+          <div class="nav-rail-list">
+            <div class="nav-rail-item active" data-workspace="command_center" data-tooltip="Command Center (Alt+1)" tabindex="0" role="button">
+              <span class="nav-rail-icon">🏠</span>
+              <span class="nav-rail-label">Command Center</span>
+              <span class="nav-rail-shortcut">Alt+1</span>
+            </div>
+
+            <div class="nav-rail-item" data-workspace="chat" data-tooltip="Neural Conversation (Alt+2)" tabindex="0" role="button">
+              <span class="nav-rail-icon">💬</span>
+              <span class="nav-rail-label">Neural Chat</span>
+              <span class="nav-rail-shortcut">Alt+2</span>
+            </div>
+
+            <div class="nav-rail-item" data-workspace="agents" data-tooltip="Agent Network (Alt+3)" tabindex="0" role="button">
+              <span class="nav-rail-icon">🤖</span>
+              <span class="nav-rail-label">Agent Network</span>
+              <span class="nav-rail-shortcut">Alt+3</span>
+            </div>
+
+            <div class="nav-rail-item" data-workspace="operations" data-tooltip="Operations Center (Alt+4)" tabindex="0" role="button">
+              <span class="nav-rail-icon">⚡</span>
+              <span class="nav-rail-label">Operations & Tasks</span>
+              <span class="nav-rail-shortcut">Alt+4</span>
+            </div>
+
+            <div class="nav-rail-item" data-workspace="research" data-tooltip="Research & Intel (Alt+5)" tabindex="0" role="button">
+              <span class="nav-rail-icon">🌐</span>
+              <span class="nav-rail-label">Research & Intel</span>
+              <span class="nav-rail-shortcut">Alt+5</span>
+            </div>
+
+            <div class="nav-rail-item" data-workspace="marketing" data-tooltip="Marketing & Wealth (Alt+6)" tabindex="0" role="button">
+              <span class="nav-rail-icon">📣</span>
+              <span class="nav-rail-label">Marketing Hub</span>
+              <span class="nav-rail-shortcut">Alt+6</span>
+            </div>
+
+            <div class="nav-rail-item" data-workspace="memory" data-tooltip="Memory Vault (Alt+7)" tabindex="0" role="button">
+              <span class="nav-rail-icon">🧠</span>
+              <span class="nav-rail-label">Memory Vault</span>
+              <span class="nav-rail-shortcut">Alt+7</span>
+            </div>
+
+            <div class="nav-rail-item" data-workspace="diagnostics" data-tooltip="System Monitor (Alt+8)" tabindex="0" role="button">
+              <span class="nav-rail-icon">💻</span>
+              <span class="nav-rail-label">System Diagnostics</span>
+              <span class="nav-rail-shortcut">Alt+8</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="nav-rail-bottom">
+          <div class="nav-rail-item" data-workspace="settings" data-tooltip="Settings & Protocols (Alt+9)" tabindex="0" role="button">
+            <span class="nav-rail-icon">⚙️</span>
+            <span class="nav-rail-label">Settings</span>
+            <span class="nav-rail-shortcut">Alt+9</span>
+          </div>
+        </div>
+      </nav>
+
+      <!-- MAIN WORKSPACE VIEWPORT -->
+      <main class="main-viewport" id="mainViewport">
+        
+        <!-- WORKSPACE 1: COMMAND CENTER (PRIMARY HUD) -->
+        <div class="workspace-view active" id="workspaceCommandCenter">
+          <div class="hud-main" style="display:flex; flex:1; min-height:0;">
+            
+            <!-- LEFT PANEL: SYSTEM TELEMETRY -->
+            <section class="hud-panel left-panel">
+              <div class="panel-header">
+                <span class="panel-title">TELEMETRY MATRIX</span>
+                <span class="panel-tag">SYS.DIAG.01</span>
+              </div>
+
+              <!-- CPU GAUGE -->
+              <div class="telemetry-block">
+                <div class="gauge-row">
+                  <div class="circular-gauge">
+                    <svg viewBox="0 0 100 100">
+                      <circle class="gauge-bg" cx="50" cy="50" r="42"></circle>
+                      <circle class="gauge-bar cpu-bar" id="cpuCircle" cx="50" cy="50" r="42"></circle>
+                    </svg>
+                    <div class="gauge-value">
+                      <span id="cpuPercent">0</span><small>%</small>
+                    </div>
+                  </div>
+                  <div class="gauge-details">
+                    <div class="metric-label">CPU CORE LOAD</div>
+                    <div class="metric-sub" id="cpuFreq">0 MHz · 16 Cores</div>
+                    <div class="core-bars" id="coreBarsContainer"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- RAM GAUGE -->
+              <div class="telemetry-block">
+                <div class="metric-header">
+                  <span class="metric-label">PHYSICAL RAM</span>
+                  <span class="metric-num" id="ramDetail">0 / 0 GB</span>
+                </div>
+                <div class="progress-bar-container">
+                  <div class="progress-bar-fill" id="ramProgressFill"></div>
+                </div>
+                <div class="metric-sub" id="ramPercentLabel">ALLOCATION: 0%</div>
+              </div>
+
+              <!-- STORAGE GAUGES -->
+              <div class="telemetry-block">
+                <div class="metric-header">
+                  <span class="metric-label">STORAGE VOLUMES</span>
+                </div>
+                <div id="diskContainer" class="disk-list"></div>
+              </div>
+
+              <!-- NETWORK SPEED GAUGES -->
+              <div class="telemetry-block">
+                <div class="metric-header">
+                  <span class="metric-label">NETWORK I/O BANDWIDTH</span>
+                </div>
+                <div class="net-grid">
+                  <div class="net-stat">
+                    <span class="net-icon">▲ UP</span>
+                    <span class="net-val" id="netUp">0.0 KB/s</span>
+                  </div>
+                  <div class="net-stat">
+                    <span class="net-icon">▼ DOWN</span>
+                    <span class="net-val" id="netDown">0.0 KB/s</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- UPTIME & SYSTEM HEALTH -->
+              <div class="telemetry-block">
+                <div class="metric-header">
+                  <span class="metric-label">SYSTEM UPTIME</span>
+                  <span class="metric-num" id="uptimeLabel">00:00:00</span>
+                </div>
+              </div>
+            </section>
+
+            <!-- CENTER STAGE: ARC REACTOR CORE & VOICE INTERACTION -->
+            <section class="center-stage">
+              <div class="reactor-wrapper">
+                <canvas id="arcCanvas" width="560" height="560"></canvas>
+                <div class="reactor-overlay-data">
+                  <div class="core-status" id="coreStatusLabel">ONLINE</div>
+                  <div class="core-subtext" id="coreSubtext">AWAITING DIRECTIVE</div>
+                </div>
+              </div>
+
+              <!-- VOICE & CONTROL DOCK -->
+              <div class="voice-dock">
+                <button class="voice-trigger-btn" id="btnVoiceToggle" title="Click to Speak or Toggle Continuous Listening">
+                  <div class="mic-glow-ring"></div>
+                  <div class="mic-icon" id="micIcon">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
+                      <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                      <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                    </svg>
+                  </div>
+                </button>
+                
+                <div class="voice-options">
+                  <label class="hud-toggle">
+                    <input type="checkbox" id="chkContinuousVoice" checked>
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-text">ALWAYS-ON LISTENING</span>
+                  </label>
+                  <label class="hud-toggle">
+                    <input type="checkbox" id="chkWakeWord">
+                    <span class="toggle-slider"></span>
+                    <span class="toggle-text">REQUIRE "JARVIS" WAKE-WORD</span>
+                  </label>
+                  <div class="accent-picker-row" style="margin-top:6px; display:flex; align-items:center; gap:6px;">
+                    <span style="font-family:var(--font-mono); font-size:10px; color:#00e5ff;">ACCENT:</span>
+                    <select class="hud-select" id="selSpeechLang" style="font-size:11px; padding:3px 8px; width:auto; border-color:rgba(0,229,255,0.4);">
+                      <option value="en-IN" selected>South Asian English (en-IN) · Recommended</option>
+                      <option value="en-US">US English (en-US)</option>
+                      <option value="en-GB">UK English (en-GB)</option>
+                      <option value="bn-BD">বাংলা / Bengali (bn-BD)</option>
+                    </select>
+                  </div>
+                  <div class="audio-mode-row" style="margin-top:6px; display:flex; align-items:center; gap:6px;">
+                    <span style="font-family:var(--font-mono); font-size:10px; color:#00e5ff;">AUDIO ROUTE:</span>
+                    <select class="hud-select" id="selAudioMode" style="font-size:11px; padding:3px 8px; width:auto; border-color:rgba(0,229,255,0.4);">
+                      <option value="browser" selected>Browser Audio (Active Device · Mobile / PC)</option>
+                      <option value="speaker">Host PC Hardware Speakers (Direct Kernel)</option>
+                    </select>
+                  </div>
+                  <div class="model-picker-row" style="margin-top:6px; display:flex; align-items:center; gap:6px;">
+                    <span style="font-family:var(--font-mono); font-size:10px; color:#38ef7d;">AI BRAIN:</span>
+                    <select class="hud-select" id="selMainModel" style="font-size:11px; padding:3px 8px; width:auto; border-color:rgba(56,239,125,0.5); color:#38ef7d;">
+                      <option value="agy/gemini-3.8-flash-high">⚡ Antigravity: Gemini 3.8 Flash High</option>
+                      <option value="agy/gemini-3.7-flash-low" selected>⚡ Antigravity: Gemini 3.7 Flash</option>
+                      <option value="agy/claude-sonnet-4-6">🧠 Antigravity: Claude Sonnet 4.6</option>
+                      <option value="agy/claude-opus-4-6-thinking">🔮 Antigravity: Claude Opus 4.6 Thinking</option>
+                      <option value="agy/gemini-pro-agent">🤖 Antigravity: Gemini Pro Agent</option>
+                      <option value="agy/gpt-oss-120b-medium">🌐 Antigravity: GPT-OSS 120B</option>
+                      <option value="auto/best-reasoning">🧭 OmniRoute: Deep Reasoning</option>
+                      <option value="auto/chat">⚡ OmniRoute: Auto Fast Chat</option>
+                      <option value="local/autonomous">🛡️ Local Autonomous Brain (Zero Keys)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ACTIVE APPLICATION BADGE -->
+              <div class="active-app-dock">
+                <span class="app-dock-label">FOREGROUND FOCUS:</span>
+                <span class="app-dock-name" id="activeWindowTitle">DESKTOP</span>
+              </div>
+            </section>
+
+            <!-- RIGHT PANEL: MISSION CONTROL & RUNTIME AUTOMATION -->
+            <section class="hud-panel right-panel">
+              <div class="panel-header">
+                <span class="panel-title">MISSION CONTROL</span>
+                <span class="panel-tag">SYS.AUTO.02</span>
+              </div>
+
+              <!-- QUICK LAUNCH ACTIONS -->
+              <div class="telemetry-block">
+                <div class="metric-header">
+                  <span class="metric-label">APPLICATION DISPATCH</span>
+                </div>
+                <div class="quick-app-grid">
+                  <button class="quick-btn" id="btnQuickJarvisChrome" style="border-color: #00e5ff; color: #00e5ff;">JARVIS CHROME</button>
+                  <button class="quick-btn" id="btnQuickCheckEmails" style="border-color: #76ff03; color: #76ff03;">CHECK EMAILS</button>
+                  <button class="quick-btn" id="btnQuickEventbrite" style="border-color: #ff9100; color: #ff9100;">EVENTBRITE</button>
+                  <button class="quick-btn" id="btnQuickMarketingHub" style="border-color: #ff0055; color: #ff0055;">ADS ENGINE</button>
+                  <button class="quick-btn" data-action="launch" data-target="chrome">CHROME</button>
+                  <button class="quick-btn" data-action="launch" data-target="code">VS CODE</button>
+                  <button class="quick-btn" data-action="launch" data-target="terminal">TERMINAL</button>
+                  <button class="quick-btn" data-action="launch" data-target="taskmgr">TASK MGR</button>
+                </div>
+              </div>
+
+              <!-- HARDWARE CONTROL DECK -->
+              <div class="telemetry-block">
+                <div class="metric-header">
+                  <span class="metric-label">AUDIO & POWER CONTROLS</span>
+                </div>
+                <div class="slider-group">
+                  <div class="slider-row">
+                    <span class="slider-label">MASTER VOL:</span>
+                    <span class="slider-val" id="volumeDisplay">100%</span>
+                  </div>
+                  <input type="range" class="hud-range" id="volumeSlider" min="0" max="100" value="100">
+                </div>
+                <div class="quick-app-grid" style="margin-top: 10px;">
+                  <button class="quick-btn" id="btnMuteToggle">MUTE</button>
+                  <button class="quick-btn" id="btnMediaPlay">PLAY/PAUSE</button>
+                  <button class="quick-btn" id="btnScreenshot">CAPTURE</button>
+                  <button class="quick-btn danger-btn" id="btnLockPc">LOCK PC</button>
+                </div>
+              </div>
+
+              <!-- TOP RESOURCE CONSUMING PROCESSES -->
+              <div class="telemetry-block">
+                <div class="metric-header">
+                  <span class="metric-label">TOP PROCESS MATRIX</span>
+                </div>
+                <div class="process-table" id="processTable"></div>
+              </div>
+
+              <!-- ORCHESTRATOR TASK PIPELINE & SAFETY MONITOR -->
+              <div class="telemetry-block">
+                <div class="metric-header">
+                  <span class="metric-label">ORCHESTRATOR PIPELINE</span>
+                  <span class="metric-num" id="taskPipelineSummary">0 ACTIVE · 0 WAITING</span>
+                </div>
+                <div class="pipeline-list" id="orchestratorPipelineDeck" style="font-family:var(--font-mono); font-size:11px; max-height:130px; overflow-y:auto; line-height:1.4; color:#e0f7fa; padding:4px 0;">
+                  <div style="opacity:0.6;">All systems nominal. Ready for directives.</div>
+                </div>
+              </div>
+            </section>
+
+          </div>
+
+          <!-- BOTTOM DECK: NEURAL TERMINAL & VOICE RECOGNITION CONSOLE -->
+          <footer class="hud-footer">
+            <div class="hud-corner bottom-left"></div>
+            <div class="hud-corner bottom-right"></div>
+            
+            <!-- TERMINAL LOG FEED -->
+            <div class="terminal-feed" id="terminalFeed">
+              <div class="log-line info">
+                <span class="log-time">[00:00:00]</span>
+                <span class="log-sender">SYSTEM:</span>
+                <span class="log-text">J.A.R.V.I.S. neural matrix initialized. Welcoming Sir Shakil.</span>
+              </div>
+            </div>
+
+            <!-- INTERACTIVE INPUT DOCK -->
+            <div class="input-dock">
+              <div class="status-indicator-light" id="inputStatusIndicator"></div>
+              <input type="text" class="hud-input" id="cmdInput" placeholder="Enter directive or speak freely ('Jarvis, open Chrome and set volume to 50%')..." autocomplete="off">
+              <button class="hud-btn send-btn" id="btnSend">TRANSMIT</button>
+            </div>
+
+            <!-- SUGGESTION CHIPS -->
+            <div class="chips-row">
+              <button class="chip-cmd chip-btn" data-cmd="Jarvis, check my emails and give me an executive brief">📧 Check My Emails</button>
+              <button class="chip-cmd chip-btn" data-cmd="Jarvis, optimize an Eventbrite listing for an AI masterclass">🎟️ Eventbrite SEO</button>
+              <button class="chip-cmd chip-btn" data-cmd="Jarvis, generate a complete multi-channel ad campaign for my high-ticket offer">📣 Multi-Channel Ads</button>
+              <button class="chip-cmd chip-btn" data-cmd="Jarvis, open dedicated browser profile">🌐 Jarvis Chrome</button>
+              <button class="chip-btn" data-cmd="Jarvis, what is your best strategy to earn money for me?">💰 Earn Money Strategy</button>
+              <button class="chip-cmd chip-btn" data-cmd="Jarvis, formulate a growth marketing and customer acquisition plan">📈 Growth Marketing</button>
+              <button class="chip-cmd chip-btn" data-cmd="Jarvis, report full system status">System Status</button>
+              <button class="chip-cmd chip-btn" data-cmd="Jarvis, conduct deep research on profitable micro SaaS tools">Research Micro-SaaS</button>
+              <button class="chip-cmd chip-btn" data-cmd="Jarvis, what do you know about me?">Recall My Profile</button>
+              <button class="chip-cmd chip-btn" data-cmd="Jarvis, what is your evolution level?">Evolution Stats</button>
+              <button class="chip-cmd chip-btn" data-cmd="Jarvis, take a screenshot of my screen">Screenshot</button>
+              <button class="chip-cmd chip-btn" data-cmd="Jarvis, lock my computer">Lock Workstation</button>
+            </div>
+          </footer>
+        </div>
+
+        <!-- WORKSPACE 2: NEURAL CONVERSATION (DEDICATED FULL CHAT) -->
+        <div class="workspace-view" id="workspaceChat">
+          <div class="workspace-page" style="padding:10px 14px; gap:8px;">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">💬 NEURAL CONVERSATION</span>
+                <span class="workspace-tag">EXECUTIVE COPILOT & WORKSTATION DISPATCHER</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-family:var(--font-mono); font-size:11px; color:#00e5ff;">BRAIN:</span>
+                <select class="hud-select" id="selDedicatedChatModel" style="font-size:12px; padding:3px 8px; border-color:#00e5ff; color:#00e5ff; font-weight:600;">
+                  <option value="agy/gemini-3.8-flash-high">⚡ Antigravity: Gemini 3.8 Flash High</option>
+                  <option value="agy/gemini-3.7-flash-low" selected>⚡ Antigravity: Gemini 3.7 Flash</option>
+                  <option value="agy/claude-sonnet-4-6">🧠 Antigravity: Claude Sonnet 4.6</option>
+                  <option value="agy/claude-opus-4-6-thinking">🔮 Antigravity: Claude Opus 4.6 Thinking</option>
+                  <option value="agy/gemini-pro-agent">🤖 Antigravity: Gemini Pro Agent</option>
+                  <option value="agy/gpt-oss-120b-medium">🌐 Antigravity: GPT-OSS 120B</option>
+                  <option value="auto/best-reasoning">🧭 OmniRoute: Deep Reasoning</option>
+                  <option value="auto/chat">⚡ OmniRoute: Auto Fast Chat</option>
+                  <option value="local/autonomous">🛡️ Local Autonomous Brain (Zero Keys)</option>
+                </select>
+                <button class="hud-btn" id="btnClearDedicatedChat" title="Clear Conversation History">CLEAR</button>
+              </div>
+            </div>
+
+            <!-- Quick Directives Toolbar -->
+            <div class="chat-quick-bar">
+              <button class="chat-quick-btn" data-chat-cmd="Jarvis check my emails">📧 Check Emails</button>
+              <button class="chat-quick-btn" data-chat-cmd="Jarvis generate Eventbrite SEO listing for AI Masterclass">🎟️ Eventbrite SEO</button>
+              <button class="chat-quick-btn" data-chat-cmd="Jarvis generate high-converting ads for tech marketing">📣 Multi-Channel Ads</button>
+              <button class="chat-quick-btn" data-chat-cmd="Jarvis research online for profitable AI automation agency niches">🌐 Web Research</button>
+              <button class="chat-quick-btn" data-chat-cmd="Jarvis report system diagnostics">💻 PC Telemetry</button>
+              <button class="chat-quick-btn" data-chat-cmd="Jarvis take a screenshot">📸 Screenshot</button>
+              <button class="chat-quick-btn" data-chat-cmd="Jarvis lock workstation">🔒 Lock PC</button>
+            </div>
+
+            <!-- Messages Container -->
+            <div class="dedicated-chat-body" id="dedicatedChatBody" style="flex:1; min-height:0; overflow-y:auto; background:rgba(4,10,20,0.6); border:1px solid var(--hud-border); border-radius:var(--radius-sm); padding:14px;">
+              <div class="chat-welcome-banner">
+                <div class="welcome-icon">💎</div>
+                <div class="welcome-text">
+                  <strong>At your service, Sir Shakil.</strong><br>
+                  Full Neural Chat workspace active. You can switch models across Google Antigravity, OmniRoute, or Local Brain at any time. Direct directives will execute across your PC, browser, and marketing engines.
+                </div>
+              </div>
+              <div class="chat-messages-container" id="dedicatedChatMessages"></div>
+            </div>
+
+            <!-- Chat Composer -->
+            <div class="dedicated-chat-footer" style="padding:4px 0;">
+              <div class="chat-input-wrapper">
+                <textarea class="hud-input chat-textarea" id="inpDedicatedChat" placeholder="Transmit instruction to Jarvis (e.g. 'Synthesize 5-step email sequence', 'Check emails', 'Deploy research')..." rows="1"></textarea>
+                <div class="chat-input-actions">
+                  <button class="chat-mic-btn" id="btnDedicatedChatMic" title="Voice Input">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                      <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                      <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                    </svg>
+                  </button>
+                  <button class="hud-btn chat-send-btn" id="btnDedicatedChatSend">TRANSMIT</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE 3: AGENT NETWORK (SPECIALISTS MISSION DECK) -->
+        <div class="workspace-view" id="workspaceAgents">
+          <div class="workspace-page">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">🤖 AGENT NETWORK</span>
+                <span class="workspace-tag">9 ON-DEMAND AUTONOMOUS AGENTS</span>
+              </div>
+              <button class="hud-btn" id="btnOpenArtifactsFromSpec" style="border-color:#38ef7d; color:#38ef7d;">📂 OPEN DESKTOP FILES</button>
+            </div>
+
+            <div class="specialist-deck-content" style="display:flex; flex:1; min-height:0; gap:14px; overflow:hidden;">
+              <!-- Left Agent Selector -->
+              <div class="specialist-sidebar" style="width:260px; background:var(--hud-panel-bg); border:1px solid var(--hud-border); border-radius:var(--radius-md); overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:6px;">
+                <button class="spec-tab-btn active" data-spec="coding">💻 Coding & Software</button>
+                <button class="spec-tab-btn" data-spec="research">🌐 Research & Intel</button>
+                <button class="spec-tab-btn" data-spec="qa">🧪 QA & Testing</button>
+                <button class="spec-tab-btn" data-spec="marketing">📣 Marketing Strategist</button>
+                <button class="spec-tab-btn" data-spec="seo">🎯 Eventbrite & SEO</button>
+                <button class="spec-tab-btn" data-spec="leadgen">📬 B2B Lead Gen</button>
+                <button class="spec-tab-btn" data-spec="wordpress">🧩 WordPress & CMS</button>
+                <button class="spec-tab-btn" data-spec="business">📊 Business & Crypto</button>
+                <button class="spec-tab-btn" data-spec="system">⚙️ Windows Systems</button>
+              </div>
+
+              <!-- Right Dispatch Area -->
+              <div class="specialist-main-view" style="flex:1; display:flex; flex-direction:column; background:var(--hud-panel-bg); border:1px solid var(--hud-border); border-radius:var(--radius-md); padding:16px; overflow-y:auto;">
+                <div id="specAgentHeader" style="margin-bottom:10px;">
+                  <div id="specAgentTitle" style="font-size:17px; font-weight:700; color:#00e5ff; font-family:var(--font-display);">Coding & Software Engineer</div>
+                  <div id="specAgentDesc" style="font-size:12px; color:rgba(224,247,250,0.8); font-family:var(--font-mono); margin-top:4px;">Production-grade script & application generation saved directly to Desktop.</div>
+                </div>
+                <div style="margin-bottom:12px;">
+                  <textarea class="hud-input" id="inpSpecPrompt" rows="3" placeholder="Enter specific mission directive for this specialist..."></textarea>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                  <button class="hud-btn" id="btnDispatchSpecialist" style="border-color:#38ef7d; color:#38ef7d; font-weight:700; padding:8px 16px;">DISPATCH AGENT</button>
+                </div>
+                <div class="spec-output-deck" id="specOutputDeck" style="flex:1; min-height:220px; background:rgba(0,10,20,0.7); border:1px solid rgba(0,229,255,0.3); border-radius:4px; padding:14px; font-family:var(--font-mono); font-size:11px; overflow-y:auto; line-height:1.5; color:#e0f7fa;">
+                  Select a specialist, enter your directive, and click 'DISPATCH AGENT'.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE 4: OPERATIONS & TASKS -->
+        <div class="workspace-view" id="workspaceOperations">
+          <div class="workspace-page">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">⚡ OPERATIONS & ACTIVE TASKS</span>
+                <span class="workspace-tag">MASTER ORCHESTRATOR & CONCURRENCY GUARD</span>
+              </div>
+              <button class="hud-btn" id="btnRefreshOps" style="border-color:#00e5ff; color:#00e5ff;">REFRESH PIPELINE</button>
+            </div>
+
+            <div class="ops-grid">
+              <div class="ops-pipeline-card">
+                <div class="metric-header" style="margin-bottom:12px;">
+                  <span class="metric-label">ACTIVE TASK QUEUE & STEP TRACE</span>
+                </div>
+                <div id="opsFullTaskList" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:10px;">
+                  <div class="task-card-item">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                      <span style="font-family:var(--font-display); font-size:13px; color:#00e5ff;">System Standby</span>
+                      <span class="agent-status-indicator">READY</span>
+                    </div>
+                    <div style="font-family:var(--font-mono); font-size:11px; color:#a7ffeb;">
+                      Master Orchestrator active. Concurrency bounded to 2 simultaneous tasks. All directives are logged with empirical evidence.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Safety & Approval Summary -->
+              <div class="ops-pipeline-card">
+                <div class="metric-header" style="margin-bottom:12px;">
+                  <span class="metric-label">SECURITY & APPROVAL GATES</span>
+                </div>
+                <div style="font-family:var(--font-body); font-size:13px; line-height:1.5; color:#e0f7fa;">
+                  <p>Operations requiring explicit Sir Shakil confirmation:</p>
+                  <ul style="margin:8px 0 14px 18px; color:#80deea; font-size:12px;">
+                    <li>File deletion & destructive disk modifications</li>
+                    <li>System shutdown, reboot, or locking</li>
+                    <li>External email or communications dispatch</li>
+                    <li>Unsanitized privileged shell commands</li>
+                  </ul>
+                  <div style="padding:10px; background:rgba(56,239,125,0.1); border:1px solid #38ef7d; border-radius:4px; font-family:var(--font-mono); font-size:11px; color:#38ef7d;">
+                    SECURITY PROTOCOL: NOMINAL<br>0 PENDING APPROVAL REQUESTS
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE 5: RESEARCH & INTEL -->
+        <div class="workspace-view" id="workspaceResearch">
+          <div class="workspace-page">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">🌐 RESEARCH & WEB INTELLIGENCE</span>
+                <span class="workspace-tag">AUTONOMOUS CHROME SCRAPER & CDP PROTOCOL</span>
+              </div>
+            </div>
+
+            <div style="background:var(--hud-panel-bg); border:1px solid var(--hud-border); border-radius:var(--radius-md); padding:16px;">
+              <div class="form-group">
+                <label class="form-label">RESEARCH TOPIC, MARKET NICHE, OR TARGET URL</label>
+                <input type="text" class="hud-input" id="txtResearchTopic" placeholder="e.g. profitable AI automation agency retainers, competitor pricing, https://target-site.com">
+              </div>
+              <div class="form-row" style="display:flex; gap:10px; margin-top:10px;">
+                <div class="form-group" style="flex:1;">
+                  <label class="form-label">RESEARCH MODE</label>
+                  <select class="hud-select" id="selResearchMode">
+                    <option value="deep">Deep Autonomous Research (Live Search + Multi-Page Scrape + OmniRoute Synthesis)</option>
+                    <option value="search_only">Live Chrome Web Search (Fast Result Extraction)</option>
+                    <option value="browse_url">Browse & Scrape Target URL (Full Content Breakdown)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="email-action-row" style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap;">
+                <button class="hud-btn" id="btnExecBrowserResearch" style="border-color:#00e5ff; color:#00e5ff;">DEPLOY CHROME RESEARCH AGENT</button>
+                <button class="hud-btn" id="btnOpenGoogleJarvis">OPEN LIVE GOOGLE IN JARVIS CHROME</button>
+                <button class="hud-btn" id="btnCaptureBrowserScreen">CAPTURE BROWSER VIEW</button>
+              </div>
+              <div class="email-results-deck" id="researchOutputDeck" style="font-family:var(--font-mono); font-size:12px; background:rgba(0,10,20,0.7); padding:14px; border:1px solid rgba(0,229,255,0.3); border-radius:4px; max-height:380px; overflow-y:auto; line-height:1.6; color:#e0f7fa; margin-top:14px;">
+                Awaiting directive. Enter a topic or URL above to deploy Jarvis's dedicated Chrome research agent across the live web.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE 6: MARKETING HUB -->
+        <div class="workspace-view" id="workspaceMarketing">
+          <div class="workspace-page">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">📣 MARKETING & WEALTH ACQUISITION HUB</span>
+                <span class="workspace-tag" style="color:#ff0055; border-color:#ff0055;">EVENTBRITE SEO · ADS · EMAIL & SMS</span>
+              </div>
+            </div>
+
+            <div class="memory-tabs">
+              <button class="marketing-tab-btn active" data-tab="tabEventbrite">EVENTBRITE SEO OPTIMIZER</button>
+              <button class="marketing-tab-btn" data-tab="tabCampaigns">MULTI-CHANNEL AD CAMPAIGNS</button>
+              <button class="marketing-tab-btn" data-tab="tabEmailBrowser">EMAIL COMMAND & DRAFTS</button>
+            </div>
+
+            <div class="modal-body marketing-body" style="background:var(--hud-panel-bg); border:1px solid var(--hud-border); border-radius:var(--radius-md); padding:16px;">
+              <!-- TAB 1: EVENTBRITE OPTIMIZER -->
+              <div class="mkt-tab-pane active" id="tabEventbrite">
+                <div class="form-group">
+                  <label class="form-label">EVENT TITLE / TOPIC</label>
+                  <input type="text" class="hud-input" id="ebTopic" placeholder="e.g. AI Agents Mastery Summit 2026, Growth Accelerator Workshop">
+                </div>
+                <div class="form-row" style="display:flex; gap:10px; margin-top:10px;">
+                  <div class="form-group" style="flex:1;">
+                    <label class="form-label">TARGET AUDIENCE</label>
+                    <input type="text" class="hud-input" id="ebAudience" placeholder="e.g. Tech Founders, Creators, Business Owners">
+                  </div>
+                  <div class="form-group" style="flex:1;">
+                    <label class="form-label">LOCATION / VENUE</label>
+                    <input type="text" class="hud-input" id="ebLocation" placeholder="e.g. Online / Global Webinar">
+                  </div>
+                </div>
+                <button class="hud-btn" id="btnGenEventbrite" style="margin-top: 12px;">GENERATE SEO-OPTIMIZED EVENTBRITE PACK</button>
+                <div class="mkt-output-box" id="ebOutput" style="display:none; margin-top:15px;"></div>
+              </div>
+
+              <!-- TAB 2: MULTI-CHANNEL CAMPAIGNS -->
+              <div class="mkt-tab-pane" id="tabCampaigns">
+                <div class="form-group">
+                  <label class="form-label">PRODUCT / OFFER NAME</label>
+                  <input type="text" class="hud-input" id="campProduct" placeholder="e.g. Autonomous AI Growth Suite / VIP Mastermind">
+                </div>
+                <div class="form-row" style="display:flex; gap:10px; margin-top:10px;">
+                  <div class="form-group" style="flex:2;">
+                    <label class="form-label">PRIMARY VALUE PROPOSITION</label>
+                    <input type="text" class="hud-input" id="campValue" placeholder="e.g. Deploy private AI agents that 10x your client acquisition and operations">
+                  </div>
+                  <div class="form-group" style="flex:1;">
+                    <label class="form-label">PRICE POINT</label>
+                    <input type="text" class="hud-input" id="campPrice" placeholder="e.g. $497">
+                  </div>
+                </div>
+                <div class="form-group" style="margin-top:10px;">
+                  <label class="form-label">CAMPAIGN TYPE</label>
+                  <select class="hud-select" id="campType">
+                    <option value="all">Complete Arsenal (Email + SMS + Google Ads + Meta Ads)</option>
+                    <option value="email">5-Part High-Converting Email Sequence</option>
+                    <option value="sms">Urgency & Flash-Sale SMS Blasts</option>
+                    <option value="google">Google Ads (Headlines, Descriptions, Keywords)</option>
+                    <option value="meta">Meta / Facebook Ads (Hooks, Angles, Copy, Targeting)</option>
+                  </select>
+                </div>
+                <button class="hud-btn" id="btnGenCampaign" style="margin-top: 12px;">DEPLOY MARKETING COPY ENGINE</button>
+                <div class="mkt-output-box" id="campOutput" style="display:none; margin-top:15px;"></div>
+              </div>
+
+              <!-- TAB 3: EMAIL COMMAND CENTER -->
+              <div class="mkt-tab-pane" id="tabEmailBrowser">
+                <div class="email-panel-banner" style="margin-bottom:12px; font-family:var(--font-mono); font-size:12px; color:#00e5ff;">
+                  Dedicated Chrome Profile: <code>data/jarvis_chrome_profile/Jarvis</code> (Permanent sign-in for Sir Shakil)
+                </div>
+                <div class="email-action-row" style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
+                  <button class="hud-btn" id="btnLaunchDedicatedChrome">LAUNCH DEDICATED CHROME</button>
+                  <button class="hud-btn" id="btnScanInboxNow">SCAN INBOX FOR UNREAD EMAILS</button>
+                  <button class="hud-btn" id="btnOpenEventbriteDash">OPEN EVENTBRITE DASHBOARD</button>
+                  <button class="hud-btn" id="btnOpenMetaAdsDash">OPEN META ADS</button>
+                </div>
+                <div class="email-results-deck" id="emailScanResults" style="font-family:var(--font-mono); font-size:12px; background:rgba(0,10,20,0.6); padding:12px; border:1px solid rgba(0,229,255,0.2); border-radius:4px; max-height:220px; overflow-y:auto; line-height:1.6;">
+                  Awaiting directive. Click 'SCAN INBOX' to retrieve unread emails and executive summaries.
+                </div>
+                
+                <!-- CONFIRMATION GATED DRAFT BOX -->
+                <div id="emailDraftStageBox" style="display:none; margin-top:15px; border-top:1px dashed rgba(255,170,0,0.4); padding-top:10px;">
+                  <div style="color:#ffaa00; font-family:var(--font-display); font-weight:700; margin-bottom:6px; letter-spacing:1px;">⚠️ SAFETY GATE: SIR SHAKIL CONFIRMATION REQUIRED</div>
+                  <div id="draftDetails" style="font-family:var(--font-mono); font-size:12px; color:#e0f7fa; margin-bottom:10px; background:rgba(255,170,0,0.05); padding:10px; border-left:3px solid #ffaa00;"></div>
+                  <div style="display:flex; gap:10px;">
+                    <button class="hud-btn" id="btnConfirmSendEmail" style="border-color:#00ff66; color:#00ff66;">CONFIRM & TRANSMIT VIA BROWSER</button>
+                    <button class="hud-btn" id="btnCancelSendEmail" style="border-color:#ff3366; color:#ff3366;">CANCEL DRAFT</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE 7: MEMORY VAULT & NEURAL RAG -->
+        <div class="workspace-view" id="workspaceMemory">
+          <div class="workspace-page">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">🧠 NEURAL MEMORY VAULT</span>
+                <span class="workspace-tag" id="memVaultLvlBadge">LEVEL 2 · 4 KNOWLEDGE NODES</span>
+              </div>
+            </div>
+
+            <!-- RESEARCH TRIGGER BAR -->
+            <div class="research-trigger-box" style="margin-bottom:12px;">
+              <input type="text" class="hud-input" id="inpResearchTopic" placeholder="Direct autonomous research (e.g. 'Quantum algorithms', 'FastAPI microservices')...">
+              <button class="hud-btn" id="btnTriggerResearch">RESEARCH NOW</button>
+            </div>
+
+            <!-- TABS -->
+            <div class="memory-tabs">
+              <button class="mem-tab-btn active" data-tab="tabFacts">DIRECTIVES & FACTS (<span id="factsCount">0</span>)</button>
+              <button class="mem-tab-btn" data-tab="tabKnowledge">KNOWLEDGE VAULT (<span id="knowledgeCount">0</span>)</button>
+              <button class="mem-tab-btn" data-tab="tabRagSearch" style="color:#00e5ff; font-weight:700;">🔍 NEURAL RAG RECALL</button>
+              <button class="mem-tab-btn" data-tab="tabAddFact">+ RECORD FACT</button>
+            </div>
+
+            <div class="modal-body memory-body" style="background:var(--hud-panel-bg); border:1px solid var(--hud-border); border-radius:var(--radius-md); padding:16px;">
+              <!-- TAB 1: USER FACTS -->
+              <div class="tab-pane active" id="tabFacts">
+                <div class="fact-list" id="memFactList"></div>
+              </div>
+
+              <!-- TAB 2: RESEARCHED KNOWLEDGE -->
+              <div class="tab-pane" id="tabKnowledge">
+                <div class="knowledge-list" id="memKnowledgeList"></div>
+              </div>
+
+              <!-- TAB: NEURAL RAG SEARCH & RECALL -->
+              <div class="tab-pane" id="tabRagSearch">
+                <div style="font-family:var(--font-mono); font-size:12px; color:#00e5ff; margin-bottom:10px;">
+                  ⚡ Neural RAG queries conversation threads, user facts, and knowledge vault across SQLite FTS5 in real-time.
+                </div>
+                <div style="display:flex; gap:10px; margin-bottom:12px;">
+                  <input type="text" class="hud-input" id="inpRagQuery" placeholder="Search context (e.g. 'Shopify app', 'marketing agency', 'Eventbrite', 'CSS')...">
+                  <button class="hud-btn" id="btnExecuteRagSearch">RECALL CONTEXT</button>
+                </div>
+                <div id="ragResultsDeck" style="font-family:var(--font-mono); font-size:12px; background:rgba(0,10,20,0.7); padding:12px; border:1px solid rgba(0,229,255,0.3); border-radius:4px; max-height:280px; overflow-y:auto; line-height:1.6; color:#e0f7fa;">
+                  Enter a keyword or topic above to test live RAG retrieval and review context blocks injected into Jarvis's brain.
+                </div>
+              </div>
+
+              <!-- TAB 3: ADD NEW FACT FORM -->
+              <div class="tab-pane" id="tabAddFact">
+                <div class="form-group">
+                  <label class="form-label">CATEGORY</label>
+                  <select class="hud-select" id="newFactCategory">
+                    <option value="preferences">Personal Preference</option>
+                    <option value="project">Active Project</option>
+                    <option value="rule">Operational Rule</option>
+                    <option value="tech">Technology / Stack</option>
+                    <option value="general">General</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-top:10px;">
+                  <label class="form-label">FACT LABEL / KEY</label>
+                  <input type="text" class="hud-input" id="newFactKey" placeholder="e.g. Favorite Language, Lab Goal">
+                </div>
+                <div class="form-group" style="margin-top:10px;">
+                  <label class="form-label">FACT CONTENT / VALUE</label>
+                  <input type="text" class="hud-input" id="newFactValue" placeholder="e.g. Python, Building next-gen autonomous agent suite">
+                </div>
+                <button class="hud-btn" id="btnSaveNewFact" style="margin-top: 14px;">COMMIT FACT TO MEMORY</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE 8: SYSTEM DIAGNOSTICS & TELEMETRY -->
+        <div class="workspace-view" id="workspaceDiagnostics">
+          <div class="workspace-page">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">💻 SYSTEM DIAGNOSTICS & TELEMETRY</span>
+                <span class="workspace-tag">HIGH-FREQUENCY PSUTIL MONITOR</span>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:14px;">
+              <div class="ops-pipeline-card">
+                <div class="metric-header"><span class="metric-label">CPU ARCHITECTURE & FREQUENCY</span></div>
+                <div style="font-family:var(--font-mono); font-size:13px; color:#e0f7fa; line-height:1.6; margin-top:8px;">
+                  <div>• Host Platform: Windows 11 Pro 64-bit</div>
+                  <div>• Core Matrix: 16 Logical Threads</div>
+                  <div>• Current Clock: Dynamic Frequency Scaling</div>
+                  <div>• Sampling Frequency: 2 Hz (Every 500ms)</div>
+                </div>
+              </div>
+
+              <div class="ops-pipeline-card">
+                <div class="metric-header"><span class="metric-label">LOCAL RUNTIME PORTS</span></div>
+                <div style="font-family:var(--font-mono); font-size:13px; color:#e0f7fa; line-height:1.6; margin-top:8px;">
+                  <div>• FastAPI Server: Port 8000 (Active)</div>
+                  <div>• OmniRoute Gateway: Port 20128 (Connected)</div>
+                  <div>• Chrome Remote Debug: Isolated Profile</div>
+                  <div>• WebSocket Transports: /ws/chat, /ws/telemetry</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKSPACE 9: SETTINGS & PROTOCOLS -->
+        <div class="workspace-view" id="workspaceSettings">
+          <div class="workspace-page">
+            <div class="workspace-header-bar">
+              <div class="workspace-title-group">
+                <span class="workspace-title">⚙️ SETTINGS & PROTOCOLS</span>
+                <span class="workspace-tag">CORE OPERATING SYSTEM CONFIGURATION</span>
+              </div>
+              <button class="hud-btn" id="btnSaveConfig" style="border-color:#38ef7d; color:#38ef7d; font-weight:700;">COMMIT SETTINGS</button>
+            </div>
+
+            <div style="max-width:700px; background:var(--hud-panel-bg); border:1px solid var(--hud-border); border-radius:var(--radius-md); padding:18px;">
+              <div class="form-group">
+                <label class="form-label">ANTIGRAVITY WORKSPACE LINK</label>
+                <div style="font-family: var(--font-mono); font-size: 12px; color: #00e5ff; padding: 4px 0; display:flex; align-items:center; gap:8px;">
+                  <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#00e5ff; box-shadow:0 0 8px #00e5ff;"></span>
+                  CONNECTED DIRECTLY TO ANTIGRAVITY (NO API KEY REQUIRED)
+                </div>
+                <small class="form-help">Jarvis is natively connected to your Google Antigravity project workspace. System automation, memory vault, and PC controls are fully active.</small>
+              </div>
+
+              <div class="form-group" style="margin-top:14px;">
+                <label class="form-label">OPTIONAL CLOUD GEMINI KEY (OPTIONAL)</label>
+                <input type="password" class="hud-input" id="cfgApiKey" placeholder="Optional external Gemini Key">
+                <small class="form-help">Optional: Only if you wish to link an external cloud model. Local Antigravity matrix is already active.</small>
+              </div>
+
+              <div class="form-group" style="margin-top:14px;">
+                <label class="form-label">SYNTHETIC VOICE ENGINE PRESET</label>
+                <select class="hud-select" id="cfgVoiceSelect"></select>
+              </div>
+
+              <div class="form-group" style="margin-top:14px;">
+                <label class="form-label">AUDIO SOUND EFFECTS</label>
+                <label class="hud-toggle">
+                  <input type="checkbox" id="cfgSoundFx" checked>
+                  <span class="toggle-slider"></span>
+                  <span class="toggle-text">Enable Sci-Fi Synthetic Chimes & Feedback</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div>
+
+  </div>
+
+  <!-- GLOBAL OVERLAY 1: COMMAND PALETTE (CTRL+K) -->
+  <div class="cmd-palette-backdrop" id="cmdPaletteModal">
+    <div class="cmd-palette-modal">
+      <div class="cmd-palette-header">
+        <span class="cmd-palette-search-icon">🔍</span>
+        <input type="text" class="cmd-palette-input" id="inpCmdPalette" placeholder="Type a command or jump to workspace..." autocomplete="off">
+        <span class="cmd-palette-esc">ESC</span>
+      </div>
+      <div class="cmd-palette-results" id="cmdPaletteResults">
+        <!-- Injected dynamically via hud.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- GLOBAL OVERLAY 2: NOTIFICATION DRAWER -->
+  <aside class="notification-drawer" id="notificationDrawer" aria-label="Notifications Center">
+    <div class="notification-header">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="color:#00e5ff; font-size:16px;">🔔</span>
+        <span style="font-family:var(--font-display); font-size:13px; font-weight:700; color:#00e5ff;">NOTIFICATIONS</span>
+      </div>
+      <div style="display:flex; gap:6px;">
+        <button class="hud-btn" id="btnClearNotifications" style="padding:2px 8px; font-size:10px;">CLEAR</button>
+        <button class="modal-close" id="btnCloseNotifications" style="font-size:14px; cursor:pointer;">✕</button>
+      </div>
+    </div>
+    <div class="notification-list" id="notificationList">
+      <div class="notification-item">
+        <div>J.A.R.V.I.S. neural matrix initialized. All systems nominal.</div>
+        <div class="notification-time">System Startup</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- GLOBAL OVERLAY 3: TOAST CONTAINER -->
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <!-- GLOBAL OVERLAY 4: HUMAN APPROVAL GATE MODAL -->
+  <div class="modal-overlay" id="approvalModal">
+    <div class="modal-card approval-card" style="max-width:540px; border-color:#ffaa00; box-shadow:0 0 35px rgba(255,170,0,0.35);">
+      <div class="modal-header" style="border-bottom:1px solid rgba(255,170,0,0.4);">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:22px;">⚠️</span>
+          <div>
+            <span class="modal-title" style="color:#ffaa00;">DIRECTIVE AUTHORIZATION REQUIRED</span>
+            <div style="font-size:10px; font-family:var(--font-mono); color:#ffdd80;">SECURITY GOVERNANCE & SAFETY GATE</div>
+          </div>
+        </div>
+        <button class="modal-close" id="btnCloseApproval">✕</button>
+      </div>
+      <div class="modal-body" style="padding:16px;">
+        <div style="font-size:12px; font-family:var(--font-mono); margin-bottom:12px; color:#e0f7fa;">
+          Sir Shakil, this action has been classified as high-consequence. Your explicit authorization is required to proceed.
+        </div>
+        <div id="approvalTaskDetails" style="background:rgba(255,170,0,0.08); border-left:3px solid #ffaa00; padding:12px; font-family:var(--font-mono); font-size:12px; margin-bottom:16px; color:#fff; border-radius:2px;">
+          <!-- Populated dynamically -->
+        </div>
+        <div style="display:flex; gap:12px; justify-content:flex-end;">
+          <button class="hud-btn" id="btnRejectApproval" style="border-color:#ff3344; color:#ff3344; background:rgba(255,51,68,0.12);">ABORT DIRECTIVE</button>
+          <button class="hud-btn" id="btnAuthorizeApproval" style="border-color:#38ef7d; color:#38ef7d; background:rgba(56,239,125,0.18); font-weight:700;">AUTHORIZE DIRECTIVE</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GLOBAL OVERLAY 5: SCREENSHOT PREVIEW MODAL -->
+  <div class="modal-overlay" id="screenModal">
+    <div class="modal-card screen-card">
+      <div class="modal-header">
+        <span class="modal-title">VISUAL CAPTURE TELEMETRY</span>
+        <button class="modal-close" id="btnCloseScreen">✕</button>
+      </div>
+      <div class="modal-body screen-body">
+        <img id="screenPreviewImg" src="" alt="Capture Preview">
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/hud.js?v=mark16_advanced_os"></script>
+</body>
+</html>
