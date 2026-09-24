@@ -3402,7 +3402,8 @@ const WORKSPACES = {
   "memory": { id: "memory", name: "MEMORY VAULT", viewId: "workspaceMemory" },
   "diagnostics": { id: "diagnostics", name: "SYSTEM DIAGNOSTICS", viewId: "workspaceDiagnostics" },
   "settings": { id: "settings", name: "SETTINGS", viewId: "workspaceSettings" },
-  "spatial": { id: "spatial", name: "SPATIAL INTEL (GOD'S EYE)", viewId: "workspaceSpatial" }
+  "spatial": { id: "spatial", name: "SPATIAL INTEL (GOD'S EYE)", viewId: "workspaceSpatial" },
+  "family": { id: "family", name: "FAMILY SAFETY & MOBILE", viewId: "workspaceFamily" }
 };
 
 let currentActiveWorkspace = localStorage.getItem("jarvis_active_workspace") || "command_center";
@@ -3457,7 +3458,7 @@ window.switchWorkspace = function(workspaceKey) {
   const refActiveWsTitle = document.getElementById("refActiveWsTitle");
   if (refActiveWsTitle) refActiveWsTitle.innerText = WORKSPACES[workspaceKey].name;
 
-  // Auto-focus relevant inputs when switching
+  // Auto-focus and workspace-specific refresh triggers
   try {
     if (workspaceKey === "chat") {
       const inp = document.getElementById("inpDedicatedChat");
@@ -3470,6 +3471,8 @@ window.switchWorkspace = function(workspaceKey) {
     } else if (workspaceKey === "memory") {
       if (typeof loadUserFacts === "function") loadUserFacts();
       if (typeof loadResearchedKnowledge === "function") loadResearchedKnowledge();
+    } else if (workspaceKey === "family") {
+      if (typeof window.renderFamilySafetyWorkspace === "function") window.renderFamilySafetyWorkspace();
     } else if (workspaceKey === "spatial") {
       if (window.spatialService && typeof window.spatialService.activate === "function") {
         window.spatialService.activate();
@@ -3693,6 +3696,381 @@ function initSpatialHudControls() {
 }
 
 // ----------------------------------------------------
+// FAMILY SAFETY & REMOTE COMPANION ENGINE
+// ----------------------------------------------------
+let pairingCountdownTimer = null;
+
+function initFamilySafetyUi() {
+  // 1. Pair Phone Button & Modal
+  const btnPair = document.getElementById("btnPairDevice");
+  const modalPair = document.getElementById("pairingCodeModal");
+  const btnClosePair = document.getElementById("btnClosePairing");
+  const lblCode = document.getElementById("lblPairingCode");
+  const lblTimer = document.getElementById("lblPairingTimer");
+
+  if (btnPair) {
+    btnPair.addEventListener("click", async () => {
+      playSound("blip");
+      if (modalPair) modalPair.style.display = "block";
+      if (lblCode) lblCode.innerText = "GEN...";
+
+      try {
+        const res = await fetch("/api/family/devices/pair/init", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ device_name: "Phone Companion" })
+        });
+        const data = await res.json();
+        if (data.pairing_code) {
+          if (lblCode) lblCode.innerText = data.pairing_code;
+          let remaining = data.expires_in_seconds || 600;
+          if (pairingCountdownTimer) clearInterval(pairingCountdownTimer);
+          pairingCountdownTimer = setInterval(() => {
+            remaining--;
+            if (lblTimer) lblTimer.innerText = `Expires in ${remaining}s`;
+            if (remaining <= 0) {
+              clearInterval(pairingCountdownTimer);
+              if (lblCode) lblCode.innerText = "EXPIRED";
+            }
+          }, 1000);
+        } else {
+          if (lblCode) lblCode.innerText = "ERROR";
+          showToast(data.error || "Pairing initiation failed", "error");
+        }
+      } catch (err) {
+        if (lblCode) lblCode.innerText = "FAIL";
+        showToast("Network error: " + err.message, "error");
+      }
+    });
+  }
+
+  if (btnClosePair && modalPair) {
+    btnClosePair.addEventListener("click", () => {
+      modalPair.style.display = "none";
+      if (pairingCountdownTimer) clearInterval(pairingCountdownTimer);
+    });
+  }
+
+  // 2. Scan Wi-Fi Discovery Button
+  const btnScanWifi = document.getElementById("btnScanWifi");
+  if (btnScanWifi) {
+    btnScanWifi.addEventListener("click", async () => {
+      playSound("ack");
+      btnScanWifi.disabled = true;
+      btnScanWifi.innerText = "SCANNING...";
+      showToast("Scanning local subnet for active devices...", "info", 2000);
+      try {
+        const res = await fetch("/api/family/network/scan", { method: "POST" });
+        const data = await res.json();
+        showToast(`Discovered ${data.discovered_nodes?.length || 0} active local devices`, "success", 2500);
+        await window.renderFamilySafetyWorkspace();
+      } catch (err) {
+        showToast("Wi-Fi scan failed: " + err.message, "error");
+      } finally {
+        btnScanWifi.disabled = false;
+        btnScanWifi.innerText = "📶 SCAN WI-FI";
+      }
+    });
+  }
+
+  // 3. Master Location Kill Switch
+  const btnKillSwitch = document.getElementById("btnMasterKillSwitch");
+  if (btnKillSwitch) {
+    btnKillSwitch.addEventListener("click", async () => {
+      playSound("alert");
+      if (!confirm("🚨 MASTER LOCATION KILL SWITCH\n\nAre you sure you want to instantly revoke and halt ALL family location sharing?")) {
+        return;
+      }
+      try {
+        const res = await fetch("/api/family/consent/kill_switch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: "Emergency master kill switch triggered by Sir Shakil from HUD" })
+        });
+        const data = await res.json();
+        showToast("🛑 EMERGENCY: All family location sharing has been revoked!", "error", 4000);
+        appendLog("warning", "KILL SWITCH", "Master location kill switch activated. All consent tokens purged.");
+        await window.renderFamilySafetyWorkspace();
+      } catch (err) {
+        showToast("Kill switch execution failed: " + err.message, "error");
+      }
+    });
+  }
+
+  // 4. Test Safety Alert Button
+  const btnTestAlert = document.getElementById("btnTriggerTestAlert");
+  if (btnTestAlert) {
+    btnTestAlert.addEventListener("click", async () => {
+      playSound("ack");
+      try {
+        const res = await fetch("/api/family/alerts/test", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ severity: "HIGH", message: "Manual test alert from J.A.R.V.I.S. HUD" })
+        });
+        const data = await res.json();
+        showToast("Triggered test alert: " + (data.message || "Alert dispatched"), "warning", 3000);
+        await window.renderFamilySafetyWorkspace();
+      } catch (err) {
+        showToast("Test alert failed: " + err.message, "error");
+      }
+    });
+  }
+
+  // 5. Voluntary Check-in Buttons
+  const btnSafe = document.getElementById("btnCheckInSafe");
+  if (btnSafe) {
+    btnSafe.addEventListener("click", async () => {
+      playSound("ack");
+      try {
+        const res = await fetch("/api/family/checkins", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "SAFE", note: "Checked in via desktop HUD" })
+        });
+        showToast("🟢 Voluntary Check-in: Marked as SAFE", "success", 2500);
+        await window.renderFamilySafetyWorkspace();
+      } catch (err) {
+        showToast("Check-in failed: " + err.message, "error");
+      }
+    });
+  }
+
+  const btnNeedHelp = document.getElementById("btnCheckInNeedHelp");
+  if (btnNeedHelp) {
+    btnNeedHelp.addEventListener("click", async () => {
+      playSound("alert");
+      try {
+        const res = await fetch("/api/family/checkins", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "NEED_HELP", note: "Emergency SOS triggered from HUD" })
+        });
+        showToast("🔴 EMERGENCY SOS Dispatched to Family Platform", "error", 4000);
+        await window.renderFamilySafetyWorkspace();
+      } catch (err) {
+        showToast("SOS failed: " + err.message, "error");
+      }
+    });
+  }
+
+  // 6. Schedule Check-in Button
+  const btnSchedCheckin = document.getElementById("btnScheduleCheckIn");
+  if (btnSchedCheckin) {
+    btnSchedCheckin.addEventListener("click", async () => {
+      const mins = prompt("Schedule next voluntary check-in in how many minutes?", "60");
+      if (!mins || isNaN(parseInt(mins, 10))) return;
+      try {
+        const res = await fetch("/api/family/checkins/schedule", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ interval_minutes: parseInt(mins, 10) })
+        });
+        showToast(`Scheduled voluntary check-in in ${mins} minutes`, "info", 2500);
+        await window.renderFamilySafetyWorkspace();
+      } catch (err) {
+        showToast("Schedule failed: " + err.message, "error");
+      }
+    });
+  }
+}
+
+window.renderFamilySafetyWorkspace = async function() {
+  // A. Devices List
+  const deviceList = document.getElementById("familyDeviceList");
+  if (deviceList) {
+    try {
+      const res = await fetch("/api/family/devices");
+      const data = await res.json();
+      const devices = data.devices || [];
+      if (devices.length === 0) {
+        deviceList.innerHTML = `<div style="color:#777; font-size:12px; text-align:center; padding:20px;">No registered devices. Click <strong>+ PAIR PHONE</strong> to connect a mobile device.</div>`;
+      } else {
+        deviceList.innerHTML = devices.map(d => {
+          const isOnline = d.status === "ACTIVE" || d.status === "ONLINE";
+          const statusColor = isOnline ? "#38ef7d" : "#888";
+          return `
+            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(0,240,255,0.15); border-radius:6px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div style="font-weight:700; color:#fff; font-size:13px; display:flex; align-items:center; gap:6px;">
+                  <span>📱</span>
+                  <span>${escapeHtml(d.device_name || d.device_id)}</span>
+                  <span style="font-size:10px; color:${statusColor}; border:1px solid ${statusColor}; padding:1px 5px; border-radius:3px;">${escapeHtml(d.status || 'OFFLINE')}</span>
+                </div>
+                <div style="font-size:11px; color:#aaa; margin-top:3px;">
+                  Member: <strong style="color:#00e5ff;">${escapeHtml(d.member_name || 'Primary')}</strong> · IP: ${escapeHtml(d.ip_address || 'Local')} · Batt: ${d.battery_level ? d.battery_level + '%' : 'N/A'}
+                </div>
+              </div>
+              <div>
+                <button class="hud-btn" onclick="window.revokeFamilyDevice('${escapeHtml(d.device_id)}')" style="padding:3px 8px; font-size:10px; border-color:#ff5252; color:#ff5252;">REVOKE</button>
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+    } catch (err) {
+      deviceList.innerHTML = `<div style="color:#ff5252; font-size:11px; padding:10px;">Failed to load devices: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  // B. Alerts List
+  const alertsList = document.getElementById("familyAlertsList");
+  if (alertsList) {
+    try {
+      const res = await fetch("/api/family/alerts");
+      const data = await res.json();
+      const alerts = data.alerts || [];
+      if (alerts.length === 0) {
+        alertsList.innerHTML = `<div style="color:#777; font-size:12px; text-align:center; padding:20px;">Zero active safety alerts. All family safety indicators normal.</div>`;
+      } else {
+        alertsList.innerHTML = alerts.map(a => {
+          const sevColor = a.severity === "CRITICAL" ? "#ff3344" : a.severity === "HIGH" ? "#ff7744" : a.severity === "MEDIUM" ? "#ffaa00" : "#00e5ff";
+          return `
+            <div style="background:rgba(255,50,50,0.06); border:1px solid ${sevColor}; border-radius:6px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <span style="background:${sevColor}; color:#000; font-size:9px; font-weight:900; padding:1px 5px; border-radius:3px;">${escapeHtml(a.severity)}</span>
+                  <span style="font-weight:700; color:#fff; font-size:12px;">${escapeHtml(a.message || a.title)}</span>
+                </div>
+                <div style="font-size:10px; color:#aaa; margin-top:4px;">${new Date(a.created_at || Date.now()).toLocaleTimeString()}</div>
+              </div>
+              <button class="hud-btn" onclick="window.dismissFamilyAlert('${escapeHtml(a.alert_id)}')" style="padding:3px 8px; font-size:10px;">DISMISS</button>
+            </div>
+          `;
+        }).join("");
+      }
+    } catch (err) {
+      alertsList.innerHTML = `<div style="color:#ff5252; font-size:11px; padding:10px;">Failed to load alerts: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  // C. Check-ins Status
+  const lblNextCheckin = document.getElementById("lblNextCheckin");
+  const lblCheckinStatus = document.getElementById("lblCheckinStatus");
+  if (lblNextCheckin || lblCheckinStatus) {
+    try {
+      const res = await fetch("/api/family/checkins/status");
+      const data = await res.json();
+      if (lblNextCheckin) lblNextCheckin.innerText = data.next_scheduled ? new Date(data.next_scheduled).toLocaleTimeString() : "None scheduled";
+      if (lblCheckinStatus) lblCheckinStatus.innerText = data.status || "ALL CLEAR";
+    } catch (err) {}
+  }
+
+  // D. Persistent Remote Tasks
+  const tasksList = document.getElementById("remoteTasksList");
+  if (tasksList) {
+    try {
+      const res = await fetch("/api/remote/tasks");
+      const data = await res.json();
+      const tasks = data.tasks || [];
+      if (tasks.length === 0) {
+        tasksList.innerHTML = `<div style="color:#777; font-size:12px; text-align:center; padding:20px;">No persistent tasks currently running.</div>`;
+      } else {
+        tasksList.innerHTML = tasks.map(t => {
+          const isPaused = t.status === "PAUSED";
+          const prog = t.progress_pct || 0;
+          return `
+            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(0,240,255,0.15); border-radius:6px; padding:10px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:700; color:#fff; font-size:12px;">${escapeHtml(t.description || t.task_id)}</span>
+                <span style="font-size:10px; color:#00e5ff; border:1px solid #00e5ff; padding:1px 5px; border-radius:3px;">${escapeHtml(t.status)}</span>
+              </div>
+              <div class="ref-progress-bar-bg" style="height:4px; margin-top:6px;">
+                <div class="ref-progress-bar-fill" style="width:${prog}%;"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:11px;">
+                <span style="color:#888;">Progress: ${prog}%</span>
+                <div style="display:flex; gap:6px;">
+                  ${isPaused 
+                    ? `<button class="hud-btn" onclick="window.resumeRemoteTask('${escapeHtml(t.task_id)}')" style="padding:2px 6px; font-size:10px; border-color:#38ef7d; color:#38ef7d;">RESUME</button>`
+                    : `<button class="hud-btn" onclick="window.pauseRemoteTask('${escapeHtml(t.task_id)}')" style="padding:2px 6px; font-size:10px; border-color:#ffaa00; color:#ffaa00;">PAUSE</button>`
+                  }
+                  <button class="hud-btn" onclick="window.cancelRemoteTask('${escapeHtml(t.task_id)}')" style="padding:2px 6px; font-size:10px; border-color:#ff5252; color:#ff5252;">CANCEL</button>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+    } catch (err) {
+      tasksList.innerHTML = `<div style="color:#ff5252; font-size:11px; padding:10px;">Failed to load tasks: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+};
+
+window.revokeFamilyDevice = async function(deviceId) {
+  if (!confirm(`Revoke and unpair device ${deviceId}?`)) return;
+  try {
+    const res = await fetch("/api/family/devices/revoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ device_id: deviceId })
+    });
+    showToast("Device revoked and disconnected", "info");
+    await window.renderFamilySafetyWorkspace();
+  } catch (err) {
+    showToast("Revoke failed: " + err.message, "error");
+  }
+};
+
+window.dismissFamilyAlert = async function(alertId) {
+  try {
+    const res = await fetch("/api/family/alerts/dismiss", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alert_id: alertId })
+    });
+    showToast("Alert dismissed", "info");
+    await window.renderFamilySafetyWorkspace();
+  } catch (err) {
+    showToast("Dismiss failed: " + err.message, "error");
+  }
+};
+
+window.pauseRemoteTask = async function(taskId) {
+  try {
+    await fetch("/api/remote/tasks/pause", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: taskId })
+    });
+    showToast("Task paused", "info");
+    await window.renderFamilySafetyWorkspace();
+  } catch (err) {
+    showToast("Pause error: " + err.message, "error");
+  }
+};
+
+window.resumeRemoteTask = async function(taskId) {
+  try {
+    await fetch("/api/remote/tasks/resume", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: taskId })
+    });
+    showToast("Task resumed", "info");
+    await window.renderFamilySafetyWorkspace();
+  } catch (err) {
+    showToast("Resume error: " + err.message, "error");
+  }
+};
+
+window.cancelRemoteTask = async function(taskId) {
+  if (!confirm(`Cancel and terminate task ${taskId}?`)) return;
+  try {
+    await fetch("/api/remote/tasks/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: taskId })
+    });
+    showToast("Task canceled", "warning");
+    await window.renderFamilySafetyWorkspace();
+  } catch (err) {
+    showToast("Cancel error: " + err.message, "error");
+  }
+};
+
+// ----------------------------------------------------
 // REFERENCE COMMAND CENTER ENGINE & COMPONENT WIRING
 // ----------------------------------------------------
 let _refCommandCenterInitialized = false;
@@ -3700,6 +4078,13 @@ let _refCommandCenterInitialized = false;
 function initReferenceCommandCenter() {
   if (_refCommandCenterInitialized) return;
   _refCommandCenterInitialized = true;
+
+  // Family Safety Controls Wire-up
+  try {
+    initFamilySafetyUi();
+  } catch (e) {
+    console.error("Family Safety UI initialization error:", e);
+  }
 
   // Spatial Intel Controls Wire-up
   try {
@@ -5491,10 +5876,17 @@ window.addEventListener("DOMContentLoaded", () => {
     { title: "Go to Operations & Tasks", category: "Workspaces", shortcut: "Alt+4", action: () => switchWorkspace("operations") },
     { title: "Go to Research & Intel", category: "Workspaces", shortcut: "Alt+5", action: () => switchWorkspace("research") },
     { title: "Go to Marketing Hub", category: "Workspaces", shortcut: "Alt+6", action: () => switchWorkspace("marketing") },
-    { title: "Go to Memory Vault", category: "Workspaces", shortcut: "Alt+7", action: () => switchWorkspace("memory") },
-    { title: "Go to System Diagnostics", category: "Workspaces", shortcut: "Alt+8", action: () => switchWorkspace("diagnostics") },
-    { title: "Go to Settings", category: "Workspaces", shortcut: "Alt+9", action: () => switchWorkspace("settings") },
+    { title: "Go to Family Safety & Mobile Companion", category: "Workspaces", shortcut: "Alt+7", action: () => switchWorkspace("family") },
+    { title: "Go to Memory Vault", category: "Workspaces", shortcut: "Alt+8", action: () => switchWorkspace("memory") },
+    { title: "Go to System Diagnostics", category: "Workspaces", shortcut: "Alt+9", action: () => switchWorkspace("diagnostics") },
     { title: "Go to Spatial Intel (God's Eye View)", category: "Workspaces", shortcut: "Alt+0", action: () => switchWorkspace("spatial") },
+    { title: "Go to Settings", category: "Workspaces", shortcut: "", action: () => switchWorkspace("settings") },
+
+    { title: "Family Safety: Scan Local Wi-Fi Network", category: "Family Safety", shortcut: "", action: () => { switchWorkspace("family"); const b = document.getElementById("btnScanWifi"); if (b) b.click(); } },
+    { title: "Family Safety: Pair New Companion Phone", category: "Family Safety", shortcut: "", action: () => { switchWorkspace("family"); const b = document.getElementById("btnPairDevice"); if (b) b.click(); } },
+    { title: "Family Safety: Voluntary Check-In (I'm Safe)", category: "Family Safety", shortcut: "", action: () => { switchWorkspace("family"); const b = document.getElementById("btnCheckInSafe"); if (b) b.click(); } },
+    { title: "Family Safety: Emergency SOS (Need Help)", category: "Family Safety", shortcut: "", action: () => { switchWorkspace("family"); const b = document.getElementById("btnCheckInNeedHelp"); if (b) b.click(); } },
+    { title: "Family Safety: Emergency Master Location Kill Switch", category: "Family Safety", shortcut: "", action: () => { switchWorkspace("family"); const b = document.getElementById("btnMasterKillSwitch"); if (b) b.click(); } },
 
     { title: "Spatial: Reset Globe Overview", category: "Spatial Intelligence", shortcut: "", action: () => { switchWorkspace("spatial"); window.spatialCommandBus?.dispatch({ action: "HOME_GLOBE" }); } },
     { title: "Spatial: Fly to Tokyo", category: "Spatial Intelligence", shortcut: "", action: () => { switchWorkspace("spatial"); window.spatialCommandBus?.dispatch({ action: "NAVIGATE", params: { latitude: 35.6762, longitude: 139.6503, rangeM: 15000, name: "Tokyo, Japan" } }); } },
@@ -5743,9 +6135,9 @@ window.addEventListener("DOMContentLoaded", () => {
         "4": "operations",
         "5": "research",
         "6": "marketing",
-        "7": "memory",
-        "8": "diagnostics",
-        "9": "settings",
+        "7": "family",
+        "8": "memory",
+        "9": "diagnostics",
         "0": "spatial"
       };
       if (numMap[e.key]) switchWorkspace(numMap[e.key]);
