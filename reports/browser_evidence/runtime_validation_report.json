@@ -1,0 +1,239 @@
+{
+  "server_url": "http://127.0.0.1:8000",
+  "runtime_startup": "uvicorn server:app --host 127.0.0.1 --port 8000",
+  "cesium_version": "1.138.0",
+  "webgl_active": true,
+  "webgl_renderer": "ANGLE (AMD, AMD Radeon 780M Graphics (0x000015BF) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+  "canvas_size": "1405x906",
+  "screenshots": {
+    "rendered_globe": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\reports\\browser_evidence\\01_rendered_earth_globe.png",
+    "navigated_tokyo": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\reports\\browser_evidence\\02_navigated_location_tokyo.png",
+    "scene_2d": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\reports\\browser_evidence\\03_scene_mode_2d.png",
+    "scene_columbus": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\reports\\browser_evidence\\04_scene_mode_columbus.png",
+    "terrain_state": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\reports\\browser_evidence\\05_terrain_state.png",
+    "buildings_state": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\reports\\browser_evidence\\06_buildings_state.png",
+    "post_lifecycle": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\reports\\browser_evidence\\07_post_lifecycle_reinit.png"
+  },
+  "scene_mode_transitions": [
+    {
+      "target": "2D",
+      "result": {
+        "res": {
+          "ok": true,
+          "commandId": "cmd_1790247073371_7",
+          "type": "SET_SCENE_MODE",
+          "status": "completed",
+          "data": {
+            "ok": true,
+            "status": "transitioning",
+            "targetMode": "2D",
+            "duration": 1.5
+          },
+          "startedAt": "2026-09-24T10:51:13.371Z",
+          "completedAt": "2026-09-24T10:51:13.372Z",
+          "diagnostics": {
+            "elapsedMs": 0
+          }
+        },
+        "hudPill": "3D",
+        "cesiumMode": "TRANSITIONING"
+      },
+      "confirmedCesium": "TRANSITIONING"
+    },
+    {
+      "target": "COLUMBUS_VIEW",
+      "result": {
+        "res": {
+          "ok": true,
+          "commandId": "cmd_1790247076019_8",
+          "type": "SET_SCENE_MODE",
+          "status": "completed",
+          "data": {
+            "ok": true,
+            "status": "transitioning",
+            "targetMode": "COLUMBUS_VIEW",
+            "duration": 1.5
+          },
+          "startedAt": "2026-09-24T10:51:16.019Z",
+          "completedAt": "2026-09-24T10:51:16.019Z",
+          "diagnostics": {
+            "elapsedMs": 0
+          }
+        },
+        "hudPill": "3D"
+      },
+      "confirmedCesium": "COLUMBUS_VIEW"
+    },
+    {
+      "target": "3D",
+      "result": {
+        "res": {
+          "ok": true,
+          "commandId": "cmd_1790247078612_9",
+          "type": "SET_SCENE_MODE",
+          "status": "completed",
+          "data": {
+            "ok": true,
+            "status": "transitioning",
+            "targetMode": "3D",
+            "duration": 1.5
+          },
+          "startedAt": "2026-09-24T10:51:18.612Z",
+          "completedAt": "2026-09-24T10:51:18.612Z",
+          "diagnostics": {
+            "elapsedMs": 0
+          }
+        },
+        "hudPill": "3D"
+      },
+      "confirmedCesium": "3D"
+    }
+  ],
+  "command_results": [
+    {
+      "command": "NAVIGATE_TOKYO",
+      "result": {
+        "ok": true,
+        "commandId": "cmd_1790247063970_1",
+        "type": "NAVIGATE",
+        "status": "completed",
+        "data": {
+          "latitude": 35.6762,
+          "longitude": 139.6503,
+          "height": 15000,
+          "name": "Tokyo, Japan",
+          "ok": true,
+          "status": "completed",
+          "destination": {
+            "latitude": 35.6762,
+            "longitude": 139.6503,
+            "height": 15000
+          },
+          "duration": 2
+        },
+        "startedAt": "2026-09-24T10:51:03.970Z",
+        "completedAt": "2026-09-24T10:51:05.988Z",
+        "diagnostics": {
+          "elapsedMs": 2017
+        }
+      }
+    },
+    {
+      "command": "NAVIGATE_ZERO_COORDINATES",
+      "result": {
+        "ok": true,
+        "commandId": "cmd_1790247067740_2",
+        "type": "NAVIGATE",
+        "status": "completed",
+        "data": {
+          "latitude": 0,
+          "longitude": 0,
+          "height": 25000,
+          "name": "Equator Prime Meridian",
+          "ok": true,
+          "status": "completed",
+          "destination": {
+            "latitude": 0,
+            "longitude": 0,
+            "height": 25000
+          },
+          "duration": 2
+        },
+        "startedAt": "2026-09-24T10:51:07.740Z",
+        "completedAt": "2026-09-24T10:51:09.756Z",
+        "diagnostics": {
+          "elapsedMs": 2016
+        }
+      }
+    },
+    {
+      "command": "OUT_OF_BOUNDS_LATITUDE",
+      "result": {
+        "ok": false,
+        "commandId": "cmd_1790247069761_3",
+        "type": "NAVIGATE",
+        "status": "failed",
+        "error": {
+          "code": "INVALID_COORDINATES",
+          "message": "Invalid coordinates: latitude=105, longitude=0. Latitude must be [-90, 90], Longitude [-180, 180].",
+          "retryable": false
+        },
+        "data": null,
+        "startedAt": "2026-09-24T10:51:09.761Z",
+        "completedAt": "2026-09-24T10:51:09.761Z",
+        "diagnostics": {
+          "elapsedMs": 0
+        }
+      }
+    }
+  ],
+  "terrain_results": [
+    {
+      "pill": "ELLIPSOID (DEGRADED)",
+      "state": {
+        "provider": "ellipsoid",
+        "status": "degraded",
+        "isRealTerrain": false,
+        "lastError": null
+      },
+      "btnActive": false
+    }
+  ],
+  "building_results": [
+    {
+      "btnActive": false,
+      "bldgState": {
+        "isEnabled": false,
+        "layerId": "buildings_3d",
+        "provider": "osm_buildings",
+        "hasTileset": false
+      }
+    }
+  ],
+  "lifecycle_results": [
+    {
+      "cycle": 1,
+      "deactivated": true,
+      "reactivated": true,
+      "destroyed_cleanly": true,
+      "reinitialized": true,
+      "active_canvases": 1
+    },
+    {
+      "cycle": 2,
+      "deactivated": true,
+      "reactivated": true,
+      "destroyed_cleanly": true,
+      "reinitialized": true,
+      "active_canvases": 1
+    },
+    {
+      "cycle": 3,
+      "deactivated": true,
+      "reactivated": true,
+      "destroyed_cleanly": true,
+      "reinitialized": true,
+      "active_canvases": 1
+    }
+  ],
+  "console_summary": {
+    "total_messages": 33,
+    "errors_count": 1,
+    "warnings_count": 15,
+    "page_errors_count": 0,
+    "failed_requests_count": 0,
+    "errors": [
+      {
+        "type": "error",
+        "text": "Failed to load resource: the server responded with a status of 401 ()",
+        "location": "{'url': 'https://api.cesium.com/v1/assets/96188/endpoint?access_token=', 'line': 0, 'column': 0, 'lineNumber': 0, 'columnNumber': 0}"
+      }
+    ],
+    "page_errors": [],
+    "failed_requests": []
+  },
+  "known_limitations": [
+    "Cesium Ion 3D World Terrain requires a valid user CESIUM_ION_TOKEN or local elevation tileserver. In absence of a token, system gracefully degrades to high-resolution Ellipsoid without crashing.",
+    "Cesium Ion Photorealistic 3D Buildings require an active Ion asset ID / token. When unconfigured, the building layer reports honest 'unsupported/failed' status and does not falsely claim active rendering."
+  ]
+}

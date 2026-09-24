@@ -15,6 +15,10 @@ export class RenderLoopController {
     this._minFrameIntervalMs = 16.6; // Target 60 FPS max
   }
 
+  get isRunning() {
+    return !this.isPaused && !!this.viewer;
+  }
+
   attachViewer(viewer) {
     this.viewer = viewer;
   }

@@ -3498,8 +3498,11 @@ window.switchWorkspace = function(workspaceKey) {
 function initSpatialHudControls() {
   // 1. Layer Chips
   document.querySelectorAll(".spatial-layer-chip").forEach(chip => {
+    const layerId = chip.getAttribute("data-layer");
+    if (layerId === "buildings" || layerId === "terrain") {
+      return; // Handled by dedicated, hardened 3D building and terrain controllers below
+    }
     chip.addEventListener("click", () => {
-      const layerId = chip.getAttribute("data-layer");
       chip.classList.toggle("active");
       const isNowActive = chip.classList.contains("active");
       if (window.spatialCommandBus) {
@@ -3542,9 +3545,6 @@ function initSpatialHudControls() {
     "btnSpatialFindMe": { action: "CENTER_ON_SELF" },
     "btnCenterOnSelf": { action: "CENTER_ON_SELF" },
     "btnSpatialHomeGlobe": { action: "HOME_GLOBE" },
-    "btnSpatialMode3D": { action: "SET_SCENE_MODE", params: { mode: "3D" } },
-    "btnSpatialMode2D": { action: "SET_SCENE_MODE", params: { mode: "2D" } },
-    "btnSpatialModeCV": { action: "SET_SCENE_MODE", params: { mode: "COLUMBUS_VIEW" } },
     "btnSpatialTokyo": { action: "NAVIGATE", params: { latitude: 35.6762, longitude: 139.6503, rangeM: 15000, name: "Tokyo, Japan" } },
     "btnSpatialLondon": { action: "NAVIGATE", params: { latitude: 51.5074, longitude: -0.1278, rangeM: 15000, name: "London, UK" } },
     "btnSpatialNYC": { action: "NAVIGATE", params: { latitude: 40.7128, longitude: -74.0060, rangeM: 15000, name: "New York City, USA" } },
@@ -3556,57 +3556,112 @@ function initSpatialHudControls() {
   Object.entries(locMap).forEach(([btnId, cmd]) => {
     const btn = document.getElementById(btnId);
     if (btn) {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", async () => {
         if (window.spatialCommandBus) {
-          window.spatialCommandBus.dispatch(cmd);
-        }
-        if (btnId === "btnSpatialMode3D" || btnId === "btnSpatialMode2D" || btnId === "btnSpatialModeCV") {
-          const modePill = document.getElementById("hudSpatialSceneMode");
-          if (modePill) {
-            modePill.textContent = btnId === "btnSpatialMode3D" ? "3D" : (btnId === "btnSpatialMode2D" ? "2D" : "COLUMBUS");
+          const res = await window.spatialCommandBus.dispatch(cmd);
+          if (res && res.ok) {
+            try { playSound("ack"); } catch(_) {}
+          } else {
+            showToast(`Navigation failed: ${res?.error?.message || "Execution error"}`, "warning", 3000);
           }
         }
-        try { playSound("ack"); } catch(_) {}
       });
     }
   });
 
-  // 3.1 3D Buildings & Terrain Toggles
+  // 3.1 Hardened Scene Mode Transitions (Derives state only from confirmed Cesium transition)
+  const sceneModeButtons = {
+    "btnSpatialMode3D": "3D",
+    "btnSpatialMode2D": "2D",
+    "btnSpatialModeCV": "COLUMBUS_VIEW"
+  };
+
+  Object.entries(sceneModeButtons).forEach(([btnId, targetMode]) => {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.addEventListener("click", async () => {
+        if (!window.spatialCommandBus) return;
+        const res = await window.spatialCommandBus.dispatch({
+          action: "SET_SCENE_MODE",
+          params: { mode: targetMode }
+        });
+        if (res && res.ok && res.status === "completed") {
+          const confirmedMode = res.data?.targetMode || res.data?.mode || targetMode;
+          const modePill = document.getElementById("hudSpatialSceneMode");
+          if (modePill) {
+            modePill.textContent = (confirmedMode === "COLUMBUS_VIEW" || confirmedMode === "CV") ? "COLUMBUS" : confirmedMode;
+            modePill.style.color = "#00e5ff";
+          }
+          // Highlight confirmed active button
+          Object.keys(sceneModeButtons).forEach(id => {
+            const b = document.getElementById(id);
+            if (b) {
+              const active = (id === btnId);
+              b.style.borderColor = active ? "#00e5ff" : "";
+              b.style.color = active ? "#00e5ff" : "";
+            }
+          });
+          try { playSound("ack"); } catch(_) {}
+        } else {
+          showToast(`Scene transition failed: ${res?.error?.message || "Scene error"}`, "warning", 3000);
+        }
+      });
+    }
+  });
+
+  // 3.2 Hardened 3D Buildings Toggle (State updated only upon confirmed tileset action)
   const btnBuildings = document.getElementById("btnToggle3DBuildings");
   if (btnBuildings) {
     btnBuildings.addEventListener("click", async () => {
-      btnBuildings.classList.toggle("active");
-      const isNowActive = btnBuildings.classList.contains("active");
-      if (window.spatialCommandBus) {
-        const res = await window.spatialCommandBus.dispatch({ action: "TOGGLE_BUILDINGS" });
-        if (res.ok) {
-          showToast(`3D Buildings: ${isNowActive ? "ENABLED" : "DISABLED"}`, "info", 2000);
-        } else {
-          btnBuildings.classList.remove("active");
-          showToast(`3D Buildings unavailable: ${res.error?.message || "Token required"}`, "warning", 3500);
-        }
+      if (!window.spatialCommandBus) return;
+      const res = await window.spatialCommandBus.dispatch({ action: "TOGGLE_BUILDINGS" });
+      if (res && res.ok && res.status === "completed") {
+        const isVisible = !!res.data?.visible;
+        btnBuildings.classList.toggle("active", isVisible);
+        showToast(`3D Buildings: ${isVisible ? "ENABLED" : "DISABLED"}`, "info", 2000);
+        try { playSound("ack"); } catch(_) {}
+      } else {
+        btnBuildings.classList.remove("active");
+        showToast(`3D Buildings unavailable: ${res?.error?.message || "Cesium Ion token required"}`, "warning", 3500);
       }
-      try { playSound("blip"); } catch(_) {}
     });
   }
 
+  // 3.3 Hardened 3D Terrain Toggle (Honest fallback detection, never claims real terrain if degraded)
   const btnTerrain = document.getElementById("btnToggle3DTerrain");
   if (btnTerrain) {
     btnTerrain.addEventListener("click", async () => {
-      btnTerrain.classList.toggle("active");
-      const isNowActive = btnTerrain.classList.contains("active");
-      if (window.spatialCommandBus) {
-        const targetTerrain = isNowActive ? "world_terrain" : "ellipsoid";
-        const res = await window.spatialCommandBus.dispatch({
-          action: "SET_TERRAIN",
-          params: { provider: targetTerrain }
-        });
-        const terrainPill = document.getElementById("hudSpatialTerrainStatus");
+      if (!window.spatialCommandBus) return;
+      const willEnable = !btnTerrain.classList.contains("active");
+      const targetTerrain = willEnable ? "world_terrain" : "ellipsoid";
+      const res = await window.spatialCommandBus.dispatch({
+        action: "SET_TERRAIN",
+        params: { provider: targetTerrain }
+      });
+      const terrainPill = document.getElementById("hudSpatialTerrainStatus");
+      const isReal = !!(res && res.ok && res.data?.isRealTerrain);
+      if (willEnable && !isReal) {
+        // Degraded to Ellipsoid baseline due to missing credentials or network
+        btnTerrain.classList.remove("active");
         if (terrainPill) {
-          terrainPill.textContent = res.ok && res.data?.isRealTerrain ? "WORLD TERRAIN" : "ELLIPSOID";
-          terrainPill.style.color = res.ok && res.data?.isRealTerrain ? "#00ffcc" : "#888";
+          terrainPill.textContent = "ELLIPSOID (DEGRADED)";
+          terrainPill.style.color = "#ffaa00";
         }
-        showToast(`Terrain: ${isNowActive ? (res.ok ? "WORLD TERRAIN ACTIVE" : "DEGRADED TO ELLIPSOID") : "ELLIPSOID BASELINE"}`, "info", 2500);
+        showToast("Terrain: Cesium Ion token unconfigured, degraded to Ellipsoid baseline", "warning", 3500);
+      } else if (willEnable && isReal) {
+        btnTerrain.classList.add("active");
+        if (terrainPill) {
+          terrainPill.textContent = "WORLD TERRAIN";
+          terrainPill.style.color = "#00ffcc";
+        }
+        showToast("Terrain: 3D World Terrain Active", "info", 2500);
+      } else {
+        btnTerrain.classList.remove("active");
+        if (terrainPill) {
+          terrainPill.textContent = "ELLIPSOID";
+          terrainPill.style.color = "#888";
+        }
+        showToast("Terrain: Reset to Ellipsoid Baseline", "info", 2000);
       }
       try { playSound("blip"); } catch(_) {}
     });

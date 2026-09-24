@@ -189,6 +189,7 @@ class SpatialService {
       }
 
       // 3. Create Cesium Viewer via ViewerFactory
+      this.container.innerHTML = "";
       const viewer = ViewerFactory.create(this.container, {
         baseLayer: baseLayer || false,
         depthTestAgainstTerrain: false,
@@ -380,6 +381,10 @@ class SpatialService {
       } catch (e) {
         console.warn("[SpatialService] Error destroying Cesium viewer:", e);
       }
+    }
+
+    if (this.container) {
+      try { this.container.innerHTML = ""; } catch (_) {}
     }
 
     this.viewer = null;

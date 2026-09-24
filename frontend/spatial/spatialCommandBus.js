@@ -115,7 +115,13 @@ class SpatialCommandBus {
             duration
           });
           if (!flightRes.ok) throw { code: "FLIGHT_FAILED", message: flightRes.error || "Camera flight aborted." };
-          data = flightRes;
+          data = {
+            latitude: lat,
+            longitude: lon,
+            height,
+            name: params.name || params.query,
+            ...flightRes
+          };
         } else {
           const adapterRes = await godsEyeAdapter.executeNativeAction("fly_to_location", {
             latitude: lat,
@@ -291,7 +297,9 @@ class SpatialCommandBus {
 
       else if (type === "TOGGLE_BUILDINGS") {
         if (window.spatialService?.buildingLayer) {
-          data = await window.spatialService.buildingLayer.toggle();
+          const res = await window.spatialService.buildingLayer.toggle();
+          if (!res.ok) throw { code: "BUILDINGS_FAILED", message: res.error || "3D Buildings unavailable without valid token" };
+          data = { visible: window.spatialService.buildingLayer.isEnabled, ...res };
         } else {
           throw { code: "NOT_INITIALIZED", message: "BuildingLayer is not available." };
         }

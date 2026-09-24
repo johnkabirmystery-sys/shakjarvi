@@ -65,4 +65,13 @@ export class BuildingLayer {
   toggle() {
     return this.isEnabled ? this.disable() : this.enable();
   }
+
+  getState() {
+    return {
+      isEnabled: this.isEnabled,
+      layerId: this.layerId,
+      provider: this.providerName,
+      hasTileset: this.tilesetManager ? this.tilesetManager.has(this.layerId) : false
+    };
+  }
 }
