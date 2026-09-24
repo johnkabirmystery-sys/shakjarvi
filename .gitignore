@@ -20,9 +20,12 @@ data/browser_profile/*
 !data/browser_profile/.gitkeep
 data/jarvis_chrome_profile/*
 !data/jarvis_chrome_profile/.gitkeep
+data/memory/*.db
 data/memory/*.db-journal
 data/memory/*.db-wal
 data/memory/*.db-shm
+data/location_history/
+data/location_history/*
 
 # Backups & Temp
 backup_pre_audit/

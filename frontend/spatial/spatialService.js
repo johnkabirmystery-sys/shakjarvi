@@ -12,6 +12,11 @@ import { spatialCommandBus } from "./spatialCommandBus.js";
 import { godsEyeAdapter } from "./godsEyeAdapter.js";
 import { spatialPerformanceGovernor } from "./spatialPerformanceGovernor.js";
 import { spatialDiagnostics } from "./spatialDiagnostics.js";
+import { privacyManager } from "./privacyManager.js";
+import { selfLocationEngine } from "./selfLocationEngine.js";
+import { locationFusionEngine } from "./locationFusionEngine.js";
+import { buildingResolutionService } from "./buildingResolutionService.js";
+import { locationHistoryManager } from "./locationHistoryManager.js";
 
 export const LIFECYCLE_STATES = {
   IDLE: "idle",
@@ -366,4 +371,9 @@ if (typeof window !== "undefined") {
   window.spatialEventBus = spatialEventBus;
   window.spatialState = spatialState;
   window.spatialDiagnostics = spatialDiagnostics;
+  window.privacyManager = privacyManager;
+  window.selfLocationEngine = selfLocationEngine;
+  window.locationFusionEngine = locationFusionEngine;
+  window.buildingResolutionService = buildingResolutionService;
+  window.locationHistoryManager = locationHistoryManager;
 }

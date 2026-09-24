@@ -3,6 +3,12 @@ Spatial Tools Registry (core/spatial/spatial_tools.py)
 =====================================================
 Declarative high-level spatial tools exposed to J.A.R.V.I.S. Core,
 AI Brain, and Autonomous Specialist Agents.
+Supports:
+- Privacy-preserving self-location queries & centering
+- Evidence-based building candidate resolution
+- Personal geofencing & proximity alerts
+- Strict rejection of unauthorized surveillance
+- 3D Globe camera flight, layers, and visual sensor modes
 """
 
 import time
@@ -11,6 +17,7 @@ from typing import Dict, Any, List, Optional
 from core.spatial.spatial_session import spatial_session
 from core.spatial.spatial_query_engine import spatial_query_engine
 from core.spatial.provider_manager import provider_manager
+from core.spatial.spatial_analysis import spatial_analysis_engine
 
 
 # Supported visual styles and layers (mapped to verified shader/CSS filter pipeline)
@@ -115,7 +122,6 @@ def execute_spatial_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str,
                 view_mode=view_mode
             )
 
-            # Queue client command
             return {
                 "ok": True,
                 "tool": tool_name,
@@ -144,11 +150,40 @@ def execute_spatial_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str,
                 "elapsed_ms": round((time.time() - start_time) * 1000, 2)
             }
 
-        # 3. TRACK ENTITY
+        # 3. SELF LOCATION & CENTER ON SELF
+        elif tool_name in ["get_self_location", "center_on_self"]:
+            is_center = tool_name == "center_on_self"
+            loc = spatial_session.location
+            return {
+                "ok": True,
+                "tool": tool_name,
+                "command": "CENTER_ON_SELF" if is_center else "GET_SELF_LOCATION",
+                "client_action": "center_on_self" if is_center else None,
+                "location": {
+                    "name": loc.name,
+                    "latitude": loc.latitude,
+                    "longitude": loc.longitude,
+                    "altitude": loc.altitude
+                },
+                "summary": "Centering map perspective on your verified live location, Sir." if is_center else f"Current position: {loc.name} ({loc.latitude:.4f}, {loc.longitude:.4f}).",
+                "elapsed_ms": round((time.time() - start_time) * 1000, 2)
+            }
+
+        # 4. TRACK ENTITY (WITH PRIVACY REFUSAL CHECK)
         elif tool_name == "track_entity":
             entity_id = str(arguments.get("entity_id", "")).strip()
             layer_id = str(arguments.get("layer_id", "flights")).strip()
             name = str(arguments.get("name", entity_id)).strip()
+
+            # Check privacy policy against surveillance
+            privacy_check = spatial_analysis_engine.validate_tracking_request(entity_id + " " + name)
+            if not privacy_check["allowed"]:
+                return {
+                    "ok": False,
+                    "tool": tool_name,
+                    "error": privacy_check["reason"],
+                    "explanation": privacy_check["explanation"]
+                }
 
             if not entity_id:
                 return {"ok": False, "error": "entity_id is required to track an object."}
@@ -164,7 +199,7 @@ def execute_spatial_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str,
                 "elapsed_ms": round((time.time() - start_time) * 1000, 2)
             }
 
-        # 4. UNTRACK ENTITY
+        # 5. UNTRACK ENTITY
         elif tool_name == "untrack_entity":
             spatial_session.clear_tracked_entity()
             return {
@@ -176,7 +211,7 @@ def execute_spatial_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str,
                 "elapsed_ms": round((time.time() - start_time) * 1000, 2)
             }
 
-        # 5. ENABLE / DISABLE / TOGGLE LAYER
+        # 6. ENABLE / DISABLE / TOGGLE LAYER
         elif tool_name in ["enable_layer", "disable_layer", "toggle_layer"]:
             raw_layer = str(arguments.get("layer_id", "")).lower().strip()
             alias_map = {"planes": "flights", "aircraft": "flights", "ships": "vessels", "wildfires": "firms", "quakes": "earthquakes"}
@@ -203,10 +238,9 @@ def execute_spatial_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str,
                 "elapsed_ms": round((time.time() - start_time) * 1000, 2)
             }
 
-        # 6. SWITCH VISUAL STYLE
+        # 7. SWITCH VISUAL STYLE
         elif tool_name == "switch_visual_mode":
             style = str(arguments.get("style", "normal")).lower().strip()
-            # Alias mapping
             style_alias = {
                 "night vision": "surveillance",
                 "nvg": "surveillance",
@@ -231,7 +265,7 @@ def execute_spatial_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str,
                 "elapsed_ms": round((time.time() - start_time) * 1000, 2)
             }
 
-        # 7. COCKPIT MODE
+        # 8. COCKPIT MODE
         elif tool_name in ["enter_cockpit", "exit_cockpit"]:
             is_enter = (tool_name == "enter_cockpit")
             spatial_session.in_cockpit = is_enter
@@ -245,7 +279,7 @@ def execute_spatial_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str,
                 "elapsed_ms": round((time.time() - start_time) * 1000, 2)
             }
 
-        # 8. MEASURE DISTANCE
+        # 9. MEASURE DISTANCE
         elif tool_name == "measure_distance":
             from_q = arguments.get("from_location", "")
             to_q = arguments.get("to_location", "")
@@ -279,7 +313,53 @@ def execute_spatial_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str,
                 "elapsed_ms": round((time.time() - start_time) * 1000, 2)
             }
 
-        # 9. GET SPATIAL CONTEXT & HEALTH
+        # 10. GEOFENCING TOOLS (PERSONAL DEVICE ONLY)
+        elif tool_name == "create_personal_geofence":
+            name = str(arguments.get("name", "Personal Boundary"))
+            lat = float(arguments.get("latitude", spatial_session.location.latitude))
+            lon = float(arguments.get("longitude", spatial_session.location.longitude))
+            rad = float(arguments.get("radius_meters", 100.0))
+
+            res = spatial_analysis_engine.create_geofence(name, lat, lon, rad)
+            if res.get("ok"):
+                return {
+                    "ok": True,
+                    "tool": tool_name,
+                    "command": "CREATE_GEOFENCE",
+                    "client_action": "render_geofence",
+                    "geofence": res["geofence"],
+                    "summary": f"Personal geofence '{name}' established with {int(rad)}m radius.",
+                    "elapsed_ms": round((time.time() - start_time) * 1000, 2)
+                }
+            return res
+
+        elif tool_name == "list_personal_geofences":
+            fences = spatial_analysis_engine.list_geofences()
+            return {
+                "ok": True,
+                "tool": tool_name,
+                "geofences": fences,
+                "count": len(fences),
+                "summary": f"You have {len(fences)} active personal geofences configured.",
+                "elapsed_ms": round((time.time() - start_time) * 1000, 2)
+            }
+
+        elif tool_name == "delete_personal_geofence":
+            fid = str(arguments.get("fence_id", ""))
+            res = spatial_analysis_engine.remove_geofence(fid)
+            if res.get("ok"):
+                return {
+                    "ok": True,
+                    "tool": tool_name,
+                    "command": "DELETE_GEOFENCE",
+                    "client_action": "remove_geofence",
+                    "fence_id": fid,
+                    "summary": f"Geofence '{fid}' deleted successfully.",
+                    "elapsed_ms": round((time.time() - start_time) * 1000, 2)
+                }
+            return res
+
+        # 11. GET SPATIAL CONTEXT & HEALTH
         elif tool_name == "get_spatial_context":
             return {
                 "ok": True,
@@ -312,7 +392,7 @@ def execute_spatial_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str,
         }
 
 
-# High-level tool declarations for LLM system prompt
+# Declarative schemas for AI Brain function calling
 SPATIAL_TOOLS = [
     {
         "name": "navigate_to_location",
@@ -331,8 +411,40 @@ SPATIAL_TOOLS = [
         "parameters": {}
     },
     {
+        "name": "get_self_location",
+        "description": "Get current verified device location coordinates and accuracy level.",
+        "parameters": {}
+    },
+    {
+        "name": "center_on_self",
+        "description": "Center the 3D globe camera on your current verified location.",
+        "parameters": {}
+    },
+    {
+        "name": "create_personal_geofence",
+        "description": "Create a personal boundary around home, office, or custom location for enter/exit alerts.",
+        "parameters": {
+            "name": "Name for the geofence (e.g. 'Home Office', 'Headquarters')",
+            "latitude": "Latitude in decimal degrees",
+            "longitude": "Longitude in decimal degrees",
+            "radius_meters": "Radius of the boundary in meters (default: 100)"
+        }
+    },
+    {
+        "name": "list_personal_geofences",
+        "description": "List all configured personal geofences.",
+        "parameters": {}
+    },
+    {
+        "name": "delete_personal_geofence",
+        "description": "Delete a personal geofence by ID.",
+        "parameters": {
+            "fence_id": "ID of the geofence to delete"
+        }
+    },
+    {
         "name": "track_entity",
-        "description": "Lock camera onto a selected aircraft, vessel, or satellite.",
+        "description": "Lock camera onto a selected public aircraft, vessel, or satellite (surveillance of unauthorized individuals is strictly rejected).",
         "parameters": {
             "entity_id": "Unique entity identifier or callsign",
             "layer_id": "Layer name: 'flights', 'vessels', 'satellites'",
@@ -362,7 +474,7 @@ SPATIAL_TOOLS = [
         "name": "switch_visual_mode",
         "description": "Switch the 3D world visual sensor mode.",
         "parameters": {
-            "style": "'normal', 'thermal' (FLIR), 'surveillance' (NVG), 'retro' (CRT), 'anime', 'noir', 'snow'"
+            "style": "'normal', 'thermal' (FLIR), 'surveillance' (NVG), 'retro' (CRT), 'noir'"
         }
     },
     {

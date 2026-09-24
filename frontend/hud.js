@@ -3536,6 +3536,8 @@ function initSpatialHudControls() {
 
   // 3. Quick Camera Location Buttons
   const locMap = {
+    "btnSpatialFindMe": { action: "CENTER_ON_SELF" },
+    "btnCenterOnSelf": { action: "CENTER_ON_SELF" },
     "btnSpatialHomeGlobe": { action: "HOME_GLOBE" },
     "btnSpatialTokyo": { action: "NAVIGATE", params: { latitude: 35.6762, longitude: 139.6503, rangeM: 15000, name: "Tokyo, Japan" } },
     "btnSpatialLondon": { action: "NAVIGATE", params: { latitude: 51.5074, longitude: -0.1278, rangeM: 15000, name: "London, UK" } },
@@ -3556,6 +3558,113 @@ function initSpatialHudControls() {
       });
     }
   });
+
+  // 3.5 Personal GEOINT & Privacy Controls
+  const btnToggleTracking = document.getElementById("btnToggleSelfTracking");
+  if (btnToggleTracking) {
+    btnToggleTracking.addEventListener("click", async () => {
+      if (window.selfLocationEngine) {
+        if (!window.selfLocationEngine.isTracking) {
+          btnToggleTracking.textContent = "ACQUIRING...";
+          const res = await window.selfLocationEngine.startTracking("HIGH_ACCURACY");
+          if (res.ok) {
+            btnToggleTracking.textContent = "STOP TRACKING";
+            btnToggleTracking.style.background = "rgba(255, 82, 82, 0.2)";
+            btnToggleTracking.style.borderColor = "#ff5252";
+            btnToggleTracking.style.color = "#ff5252";
+            const badge = document.getElementById("badgeSelfTrackingState");
+            if (badge) {
+              badge.textContent = "LIVE GPS";
+              badge.style.background = "rgba(0, 240, 255, 0.2)";
+              badge.style.color = "#00f0ff";
+            }
+            const pill = document.getElementById("hudSpatialSelfStatus");
+            if (pill) {
+              pill.textContent = "LIVE GPS";
+              pill.style.color = "#00f0ff";
+            }
+          } else {
+            btnToggleTracking.textContent = "ENABLE TRACKING";
+            showToast(`Location Error: ${res.error || "Permission Denied"}`, "error", 3000);
+          }
+        } else {
+          window.selfLocationEngine.stopTracking();
+          btnToggleTracking.textContent = "ENABLE TRACKING";
+          btnToggleTracking.style.background = "rgba(0, 240, 255, 0.15)";
+          btnToggleTracking.style.borderColor = "#00f0ff";
+          btnToggleTracking.style.color = "#00f0ff";
+          const badge = document.getElementById("badgeSelfTrackingState");
+          if (badge) {
+            badge.textContent = "DISABLED";
+            badge.style.background = "#222";
+            badge.style.color = "#aaa";
+          }
+          const pill = document.getElementById("hudSpatialSelfStatus");
+          if (pill) {
+            pill.textContent = "STANDBY (OFF)";
+            pill.style.color = "#888";
+          }
+        }
+      }
+      try { playSound("click"); } catch(_) {}
+    });
+  }
+
+  const chkHistory = document.getElementById("chkLocationHistory");
+  if (chkHistory) {
+    chkHistory.addEventListener("change", () => {
+      if (window.locationHistoryManager) {
+        if (chkHistory.checked) {
+          window.locationHistoryManager.enableHistory("session_only");
+          showToast("Breadcrumb trail enabled for current session", "info", 2000);
+        } else {
+          window.locationHistoryManager.disableHistory();
+        }
+      }
+    });
+  }
+
+  const btnPurge = document.getElementById("btnPurgeHistory");
+  if (btnPurge) {
+    btnPurge.addEventListener("click", () => {
+      if (window.locationHistoryManager) {
+        const res = window.locationHistoryManager.clearAllHistory();
+        showToast(`Purged ${res.deletedCount} location breadcrumb points`, "info", 2000);
+      }
+      try { playSound("blip"); } catch(_) {}
+    });
+  }
+
+  // Hook live location telemetry feedback to HUD
+  if (window.spatialEventBus) {
+    window.spatialEventBus.on("spatial.location.fused", (obs) => {
+      const accEl = document.getElementById("lblSelfAccuracy");
+      const confEl = document.getElementById("lblSelfConfidence");
+      if (accEl) accEl.textContent = `±${Math.round(obs.horizontalAccuracyMeters)}M · ${obs.accuracyLevel.code}`;
+      if (confEl) confEl.textContent = `${Math.round(obs.confidenceScore * 100)}% (${obs.confidenceLabel})`;
+
+      // Trigger building resolution if within accuracy threshold
+      if (window.buildingResolutionService) {
+        window.buildingResolutionService.resolveBuildingAndAddress(obs.latitude, obs.longitude, obs.horizontalAccuracyMeters);
+      }
+    });
+
+    window.spatialEventBus.on("spatial.building.resolved", (res) => {
+      const bldgEl = document.getElementById("lblSelfBuilding");
+      if (bldgEl) {
+        if (res.buildingCandidate) {
+          bldgEl.textContent = res.buildingCandidate.name;
+          bldgEl.style.color = "#00ffcc";
+        } else if (res.address?.displayName) {
+          bldgEl.textContent = res.address.displayName.substring(0, 32) + "...";
+          bldgEl.style.color = "#aaa";
+        } else {
+          bldgEl.textContent = res.status;
+          bldgEl.style.color = "#888";
+        }
+      }
+    });
+  }
 
   // 4. Spatial Direct Input Dispatch
   const inp = document.getElementById("inpSpatialCmd");
