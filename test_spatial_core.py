@@ -138,13 +138,13 @@ def test_ai_brain_spatial_intent():
     print(f"  [PASS] All {len(queries)} spatial natural language queries correctly classified")
 
 
-async def test_ai_brain_spatial_tool_execution():
+def test_ai_brain_spatial_tool_execution():
     print("[*] Testing AI Brain Spatial Tool Execution...")
-    res = await execute_tool_call("spatial_navigate", query="San Francisco", range_m=10000)
+    res = asyncio.run(execute_tool_call("spatial_navigate", query="San Francisco", range_m=10000))
     assert res["ok"] is True
     assert res["target"]["name"] == "San Francisco, USA"
 
-    res_mode = await execute_tool_call("spatial_visual", style="night vision")
+    res_mode = asyncio.run(execute_tool_call("spatial_visual", style="night vision"))
     assert res_mode["ok"] is True
     assert res_mode["params"]["style"] == "surveillance"
     print("  [PASS] AI Brain spatial tool execution verified")

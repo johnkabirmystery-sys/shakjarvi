@@ -587,8 +587,8 @@ async def execute_terminal_command(req: Request):
 async def execute_spatial_command_endpoint(req: Request):
     try:
         data = await req.json()
-        tool_name = data.get("tool") or data.get("command") or data.get("action") or ""
-        args = data.get("args") or data.get("params") or data.get("target") or {}
+        tool_name = data.get("tool_name") or data.get("tool") or data.get("command") or data.get("action") or ""
+        args = data.get("arguments") or data.get("args") or data.get("params") or data.get("target") or {}
         res = await spatial_service.execute_command(tool_name, args)
         return res
     except Exception as e:
@@ -635,6 +635,48 @@ async def post_spatial_query_endpoint(req: Request):
         return res
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+@app.post("/api/spatial/geojson/validate")
+async def validate_geojson_endpoint(req: Request):
+    """Validates GeoJSON data server-side before rendering on the globe."""
+    try:
+        data = await req.json()
+        geojson = data.get("geojson", data)
+
+        # Validate structure
+        geojson_type = geojson.get("type", "")
+        if geojson_type not in ("FeatureCollection", "Feature", "Point", "LineString",
+                                "Polygon", "MultiPoint", "MultiLineString", "MultiPolygon"):
+            return {"ok": False, "error": f"Invalid GeoJSON type: '{geojson_type}'"}
+
+        features = []
+        if geojson_type == "FeatureCollection":
+            features = geojson.get("features", [])
+            if not isinstance(features, list):
+                return {"ok": False, "error": "FeatureCollection 'features' must be an array."}
+        elif geojson_type == "Feature":
+            features = [geojson]
+        else:
+            features = [{"type": "Feature", "geometry": geojson, "properties": {}}]
+
+        # Validate coordinates
+        invalid_features = []
+        for i, feature in enumerate(features):
+            geom = feature.get("geometry")
+            if not geom or not geom.get("type") or not geom.get("coordinates"):
+                invalid_features.append({"index": i, "reason": "Missing geometry, type, or coordinates"})
+
+        return {
+            "ok": len(invalid_features) == 0,
+            "type": geojson_type,
+            "feature_count": len(features),
+            "invalid_features": invalid_features,
+            "valid": len(features) - len(invalid_features),
+            "summary": f"GeoJSON validated: {len(features)} features, {len(invalid_features)} invalid."
+        }
+    except Exception as e:
+        return {"ok": False, "error": f"GeoJSON validation failed: {str(e)}"}
+
 
 # Memory & Evolution Endpoints
 @app.get("/api/memory")

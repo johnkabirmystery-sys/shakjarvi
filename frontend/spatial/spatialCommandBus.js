@@ -325,6 +325,39 @@ class SpatialCommandBus {
       }
 
       // -------------------------------------------------------------
+      // 7.5 GEOJSON DATA IMPORT
+      // -------------------------------------------------------------
+      else if (type === "LOAD_GEOJSON" || type === "IMPORT_GEOJSON") {
+        if (window.spatialService?.spatialDataManager) {
+          if (params.url) {
+            data = await window.spatialService.spatialDataManager.importGeoJSONFromUrl(params.url, params);
+          } else if (params.geojson) {
+            data = await window.spatialService.spatialDataManager.importGeoJSON(params.geojson, params);
+          } else {
+            throw { code: "INVALID_REQUEST", message: "LOAD_GEOJSON requires either 'url' or 'geojson' parameter." };
+          }
+          if (!data.ok) throw { code: "GEOJSON_FAILED", message: data.error || "GeoJSON import failed" };
+        } else {
+          throw { code: "NOT_INITIALIZED", message: "SpatialDataManager is not available." };
+        }
+      }
+
+      else if (type === "LOAD_OSM_BUILDINGS" || type === "LOAD_FREE_BUILDINGS") {
+        if (window.spatialService?.spatialDataManager) {
+          const lat = Number(params.latitude);
+          const lon = Number(params.longitude);
+          const radius = Number(params.radiusKm || 1);
+          if (!validateCoordinates(lat, lon)) {
+            throw { code: "INVALID_COORDINATES", message: `Invalid building load coordinates (${params.latitude}, ${params.longitude})` };
+          }
+          data = await window.spatialService.spatialDataManager.loadBuildingsNearby(lat, lon, radius, params);
+          if (!data.ok) throw { code: "BUILDINGS_FAILED", message: data.error || "OSM building load failed" };
+        } else {
+          throw { code: "NOT_INITIALIZED", message: "SpatialDataManager is not available." };
+        }
+      }
+
+      // -------------------------------------------------------------
       // 8. SPATIAL ANALYTICS & QUERIES
       // -------------------------------------------------------------
       else if (type === "QUERY_ENTITIES") {

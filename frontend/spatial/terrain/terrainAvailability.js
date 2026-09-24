@@ -34,7 +34,19 @@ export class TerrainAvailability {
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         return { available: false, reason: "Browser is offline; remote ArcGIS elevation tiles are unreachable." };
       }
-      return { available: true };
+      // Quick connectivity check to ArcGIS public elevation service
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const resp = await fetch(
+          "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer?f=json",
+          { method: "HEAD", signal: controller.signal, mode: "no-cors" }
+        );
+        clearTimeout(timeout);
+        return { available: true, source: "arcgis_public" };
+      } catch (e) {
+        return { available: false, reason: `ArcGIS elevation service unreachable: ${e.message}` };
+      }
     }
 
     return { available: true };

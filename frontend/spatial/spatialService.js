@@ -51,6 +51,10 @@ import { SpatialEntity } from "./core/spatialEntity.js";
 import { spatialLayerRegistry } from "./core/spatialLayerRegistry.js";
 import { SpatialAnalytics } from "./analytics/spatialAnalytics.js";
 
+// Data Import Subsystem
+import { GeoJsonDataLayer } from "./data/geoJsonDataLayer.js";
+import { SpatialDataManager } from "./data/spatialDataManager.js";
+
 export const LIFECYCLE_STATES = {
   IDLE: "idle",
   LOADING: "loading",
@@ -78,6 +82,8 @@ class SpatialService {
     this.buildingLayer = new BuildingLayer(this.tilesetManager, spatialEventBus);
     this.tilesetHealth = new TilesetHealth(this.tilesetManager);
     this.imageryManager = new ImageryLayerManager(null, spatialEventBus);
+    this.geoJsonLayer = new GeoJsonDataLayer(null, spatialEventBus);
+    this.spatialDataManager = new SpatialDataManager(null, spatialEventBus);
 
     this._wsListener = null;
     this._busUnsubscribers = [];
@@ -208,6 +214,8 @@ class SpatialService {
       this.terrainManager.attachViewer(viewer);
       this.tilesetManager.attachViewer(viewer);
       this.imageryManager.attachViewer(viewer);
+      this.geoJsonLayer.attachViewer(viewer);
+      this.spatialDataManager.attachViewer(viewer);
 
       // Attach legacy/bridge adapter and performance governor
       godsEyeAdapter.attachViewer(viewer);
@@ -370,6 +378,8 @@ class SpatialService {
     this.cameraController.destroy();
     this.tilesetManager.destroy();
     this.imageryManager.destroy();
+    if (this.geoJsonLayer) this.geoJsonLayer.clear();
+    if (this.spatialDataManager) this.spatialDataManager.destroy();
 
     if (godsEyeAdapter) {
       godsEyeAdapter.destroy();
@@ -402,6 +412,8 @@ export const spatialService = new SpatialService();
 // Export modules to window for browser diagnostics and CLI access
 if (typeof window !== "undefined") {
   window.spatialService = spatialService;
+  window.geoJsonDataLayer = spatialService.geoJsonLayer;
+  window.spatialDataManager = spatialService.spatialDataManager;
   window.spatialCommandBus = spatialCommandBus;
   window.spatialEventBus = spatialEventBus;
   window.spatialState = spatialState;

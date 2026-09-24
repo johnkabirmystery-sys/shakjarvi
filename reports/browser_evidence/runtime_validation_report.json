@@ -20,7 +20,7 @@
       "result": {
         "res": {
           "ok": true,
-          "commandId": "cmd_1790247073371_7",
+          "commandId": "cmd_1790293947030_7",
           "type": "SET_SCENE_MODE",
           "status": "completed",
           "data": {
@@ -29,8 +29,8 @@
             "targetMode": "2D",
             "duration": 1.5
           },
-          "startedAt": "2026-09-24T10:51:13.371Z",
-          "completedAt": "2026-09-24T10:51:13.372Z",
+          "startedAt": "2026-09-24T23:52:27.030Z",
+          "completedAt": "2026-09-24T23:52:27.031Z",
           "diagnostics": {
             "elapsedMs": 0
           }
@@ -45,7 +45,7 @@
       "result": {
         "res": {
           "ok": true,
-          "commandId": "cmd_1790247076019_8",
+          "commandId": "cmd_1790293949352_8",
           "type": "SET_SCENE_MODE",
           "status": "completed",
           "data": {
@@ -54,10 +54,10 @@
             "targetMode": "COLUMBUS_VIEW",
             "duration": 1.5
           },
-          "startedAt": "2026-09-24T10:51:16.019Z",
-          "completedAt": "2026-09-24T10:51:16.019Z",
+          "startedAt": "2026-09-24T23:52:29.352Z",
+          "completedAt": "2026-09-24T23:52:29.353Z",
           "diagnostics": {
-            "elapsedMs": 0
+            "elapsedMs": 1
           }
         },
         "hudPill": "3D"
@@ -69,7 +69,7 @@
       "result": {
         "res": {
           "ok": true,
-          "commandId": "cmd_1790247078612_9",
+          "commandId": "cmd_1790293951553_9",
           "type": "SET_SCENE_MODE",
           "status": "completed",
           "data": {
@@ -78,8 +78,8 @@
             "targetMode": "3D",
             "duration": 1.5
           },
-          "startedAt": "2026-09-24T10:51:18.612Z",
-          "completedAt": "2026-09-24T10:51:18.612Z",
+          "startedAt": "2026-09-24T23:52:31.553Z",
+          "completedAt": "2026-09-24T23:52:31.554Z",
           "diagnostics": {
             "elapsedMs": 0
           }
@@ -94,7 +94,7 @@
       "command": "NAVIGATE_TOKYO",
       "result": {
         "ok": true,
-        "commandId": "cmd_1790247063970_1",
+        "commandId": "cmd_1790293937625_1",
         "type": "NAVIGATE",
         "status": "completed",
         "data": {
@@ -111,10 +111,10 @@
           },
           "duration": 2
         },
-        "startedAt": "2026-09-24T10:51:03.970Z",
-        "completedAt": "2026-09-24T10:51:05.988Z",
+        "startedAt": "2026-09-24T23:52:17.625Z",
+        "completedAt": "2026-09-24T23:52:19.659Z",
         "diagnostics": {
-          "elapsedMs": 2017
+          "elapsedMs": 2034
         }
       }
     },
@@ -122,7 +122,7 @@
       "command": "NAVIGATE_ZERO_COORDINATES",
       "result": {
         "ok": true,
-        "commandId": "cmd_1790247067740_2",
+        "commandId": "cmd_1790293941444_2",
         "type": "NAVIGATE",
         "status": "completed",
         "data": {
@@ -139,10 +139,10 @@
           },
           "duration": 2
         },
-        "startedAt": "2026-09-24T10:51:07.740Z",
-        "completedAt": "2026-09-24T10:51:09.756Z",
+        "startedAt": "2026-09-24T23:52:21.444Z",
+        "completedAt": "2026-09-24T23:52:23.457Z",
         "diagnostics": {
-          "elapsedMs": 2016
+          "elapsedMs": 2013
         }
       }
     },
@@ -150,7 +150,7 @@
       "command": "OUT_OF_BOUNDS_LATITUDE",
       "result": {
         "ok": false,
-        "commandId": "cmd_1790247069761_3",
+        "commandId": "cmd_1790293943464_3",
         "type": "NAVIGATE",
         "status": "failed",
         "error": {
@@ -159,8 +159,8 @@
           "retryable": false
         },
         "data": null,
-        "startedAt": "2026-09-24T10:51:09.761Z",
-        "completedAt": "2026-09-24T10:51:09.761Z",
+        "startedAt": "2026-09-24T23:52:23.464Z",
+        "completedAt": "2026-09-24T23:52:23.464Z",
         "diagnostics": {
           "elapsedMs": 0
         }
@@ -169,10 +169,10 @@
   ],
   "terrain_results": [
     {
-      "pill": "ELLIPSOID (DEGRADED)",
+      "pill": "ELLIPSOID",
       "state": {
         "provider": "ellipsoid",
-        "status": "degraded",
+        "status": "loading",
         "isRealTerrain": false,
         "lastError": null
       },
@@ -217,20 +217,19 @@
     }
   ],
   "console_summary": {
-    "total_messages": 33,
-    "errors_count": 1,
-    "warnings_count": 15,
+    "total_messages": 29,
+    "errors_count": 0,
+    "warnings_count": 11,
     "page_errors_count": 0,
-    "failed_requests_count": 0,
-    "errors": [
-      {
-        "type": "error",
-        "text": "Failed to load resource: the server responded with a status of 401 ()",
-        "location": "{'url': 'https://api.cesium.com/v1/assets/96188/endpoint?access_token=', 'line': 0, 'column': 0, 'lineNumber': 0, 'columnNumber': 0}"
-      }
-    ],
+    "failed_requests_count": 1,
+    "errors": [],
     "page_errors": [],
-    "failed_requests": []
+    "failed_requests": [
+      {
+        "url": "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer?f=json",
+        "failure": "net::ERR_ABORTED"
+      }
+    ]
   },
   "known_limitations": [
     "Cesium Ion 3D World Terrain requires a valid user CESIUM_ION_TOKEN or local elevation tileserver. In absence of a token, system gracefully degrades to high-resolution Ellipsoid without crashing.",

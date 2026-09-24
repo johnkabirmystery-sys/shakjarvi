@@ -3633,13 +3633,26 @@ function initSpatialHudControls() {
     btnTerrain.addEventListener("click", async () => {
       if (!window.spatialCommandBus) return;
       const willEnable = !btnTerrain.classList.contains("active");
-      const targetTerrain = willEnable ? "world_terrain" : "ellipsoid";
-      const res = await window.spatialCommandBus.dispatch({
+      
+      // Try free terrain first (ArcGIS public elevation), then Ion terrain
+      let targetTerrain = willEnable ? "arcgis_elevation" : "ellipsoid";
+      let res = await window.spatialCommandBus.dispatch({
         action: "SET_TERRAIN",
         params: { provider: targetTerrain }
       });
+      
+      if (willEnable && (!res || !res.ok || !res.data?.isRealTerrain)) {
+        targetTerrain = "world_terrain";
+        res = await window.spatialCommandBus.dispatch({
+          action: "SET_TERRAIN",
+          params: { provider: targetTerrain }
+        });
+      }
+
       const terrainPill = document.getElementById("hudSpatialTerrainStatus");
       const isReal = !!(res && res.ok && res.data?.isRealTerrain);
+      const provider = res?.data?.provider || targetTerrain;
+
       if (willEnable && !isReal) {
         // Degraded to Ellipsoid baseline due to missing credentials or network
         btnTerrain.classList.remove("active");
@@ -3647,14 +3660,19 @@ function initSpatialHudControls() {
           terrainPill.textContent = "ELLIPSOID (DEGRADED)";
           terrainPill.style.color = "#ffaa00";
         }
-        showToast("Terrain: Cesium Ion token unconfigured, degraded to Ellipsoid baseline", "warning", 3500);
+        showToast("Terrain: 3D providers unreachable, degraded to Ellipsoid baseline", "warning", 3500);
       } else if (willEnable && isReal) {
         btnTerrain.classList.add("active");
         if (terrainPill) {
-          terrainPill.textContent = "WORLD TERRAIN";
-          terrainPill.style.color = "#00ffcc";
+          if (provider === "arcgis_elevation") {
+            terrainPill.textContent = "ARC ELEVATION";
+            terrainPill.style.color = "#00ff00";
+          } else {
+            terrainPill.textContent = "WORLD TERRAIN";
+            terrainPill.style.color = "#00ffff";
+          }
         }
-        showToast("Terrain: 3D World Terrain Active", "info", 2500);
+        showToast(`Terrain: ${terrainPill?.textContent || "3D Terrain"} Active`, "info", 2500);
       } else {
         btnTerrain.classList.remove("active");
         if (terrainPill) {
