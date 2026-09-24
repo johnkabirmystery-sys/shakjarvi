@@ -76,15 +76,28 @@ class SpatialService {
       if (window.Cesium && this.container) {
         this._showLoadingIndicator("GENERATING 3D PHOTOREALISTIC GLOBE...");
         
-        // Ensure Ion credentials or fallback to Esri keyless
+        window.CESIUM_BASE_URL = "/spatial/cesium/";
+
         if (window.Cesium.Ion) {
           window.Cesium.Ion.defaultAccessToken = "";
         }
 
+        let baseLayer = undefined;
+        try {
+          if (window.Cesium.ArcGisMapServerImageryProvider && typeof window.Cesium.ArcGisMapServerImageryProvider.fromUrl === "function") {
+            const provider = await window.Cesium.ArcGisMapServerImageryProvider.fromUrl(
+              "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer"
+            );
+            baseLayer = new window.Cesium.ImageryLayer(provider);
+          } else if (window.Cesium.createWorldImageryAsync) {
+            baseLayer = await window.Cesium.createWorldImageryAsync();
+          }
+        } catch (imageryErr) {
+          console.warn("[SpatialService] Primary imagery provider error, using fallback:", imageryErr);
+        }
+
         const viewer = new window.Cesium.Viewer(this.container, {
-          imageryProvider: new window.Cesium.ArcGisMapServerImageryProvider({
-            url: "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer"
-          }),
+          baseLayer: baseLayer || false,
           baseLayerPicker: false,
           geocoder: false,
           homeButton: false,
@@ -95,7 +108,7 @@ class SpatialService {
           navigationHelpButton: false,
           animation: false,
           shouldAnimate: true,
-          requestRenderMode: true, // Idle render governor baseline!
+          requestRenderMode: true, // Idle render governor baseline
           maximumRenderTimeChange: Infinity
         });
 
@@ -120,6 +133,8 @@ class SpatialService {
   }
 
   async _loadCesiumDependencies() {
+    window.CESIUM_BASE_URL = "/spatial/cesium/";
+
     // Check if Cesium stylesheet is present
     if (!document.getElementById("cesiumCss")) {
       const link = document.createElement("link");
@@ -135,7 +150,6 @@ class SpatialService {
       script.src = "/spatial/cesium/Cesium.js";
       script.onload = () => resolve();
       script.onerror = () => {
-        // Fallback to unpkg CDN if local asset path is building
         console.warn("[SpatialService] Local Cesium.js unavailable, falling back to CDN...");
         const cdnScript = document.createElement("script");
         cdnScript.src = "https://cesium.com/downloads/cesiumjs/releases/1.124/Build/Cesium/Cesium.js";

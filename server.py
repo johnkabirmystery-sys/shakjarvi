@@ -1172,10 +1172,22 @@ static_dir = Path("frontend")
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-# Static Spatial / God's Eye View Mount
+# Static Spatial / God's Eye View Mounts
 gev_dist = Path("vendor/gods-eye-view/dist")
 if gev_dist.exists():
-    app.mount("/spatial", StaticFiles(directory=str(gev_dist)), name="spatial_dist")
+    app.mount("/spatial", StaticFiles(directory=str(gev_dist), html=True), name="spatial_dist")
+    cesium_dir = gev_dist / "cesium"
+    if cesium_dir.exists():
+        app.mount("/cesium", StaticFiles(directory=str(cesium_dir)), name="cesium_dist")
+    assets_dir = gev_dist / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets_dist")
+    events_dir = gev_dist / "events"
+    if events_dir.exists():
+        app.mount("/events", StaticFiles(directory=str(events_dir)), name="events_dist")
+    models_dir = gev_dist / "models"
+    if models_dir.exists():
+        app.mount("/models", StaticFiles(directory=str(models_dir)), name="models_dist")
 
 @app.get("/")
 async def serve_index():
