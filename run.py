@@ -9,7 +9,7 @@ from threading import Thread
 # 1. Windows 11 Desktop Integration & Taskbar Identity
 try:
     import ctypes
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Shakil.Jarvis.MarkXVI.NativeOS")
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Shakil.Jarvis.MarkXVII.NativeOS")
 except Exception:
     pass
 
@@ -39,7 +39,7 @@ BANNER = r"""
 
        J.A.R.V.I.S. // SHAKIL'S ASSISTANT
        ==================================
-       MARK XVI - NATIVE DESKTOP EDITION
+       MARK XVII - NATIVE DESKTOP EDITION
 ===================================================================
 """
 
@@ -243,7 +243,7 @@ if __name__ == "__main__":
         import webview
 
         window = webview.create_window(
-            title="J.A.R.V.I.S. — Shakil's Personal Assistant (Mark XVI)",
+            title="J.A.R.V.I.S. — Shakil's Personal & Business Assistant (Mark XVII)",
             url="http://127.0.0.1:8000",
             width=1600,
             height=950,
