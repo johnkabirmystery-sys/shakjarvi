@@ -578,8 +578,8 @@ async def execute_terminal_command(req: Request):
 async def execute_spatial_command_endpoint(req: Request):
     try:
         data = await req.json()
-        tool_name = data.get("tool") or data.get("command") or ""
-        args = data.get("args") or data.get("params") or {}
+        tool_name = data.get("tool") or data.get("command") or data.get("action") or ""
+        args = data.get("args") or data.get("params") or data.get("target") or {}
         res = await spatial_service.execute_command(tool_name, args)
         return res
     except Exception as e:

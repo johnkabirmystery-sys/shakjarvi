@@ -56,14 +56,14 @@ class SpatialStateStore {
         available: ["esri-imagery", "osm", "photoreal", "bing-aerial"]
       },
       visualStyle: {
-        active: "normal", // normal, retro, surveillance, thermal, anime, noir, snow
-        available: ["normal", "retro", "surveillance", "thermal", "anime", "noir", "snow"]
+        active: "normal", // normal, surveillance, thermal, retro, noir
+        available: ["normal", "surveillance", "thermal", "retro", "noir"]
       },
       annotations: [],
       inCockpit: false,
       diagnostics: {
-        fps: 60,
-        frameTimeMs: 16.6,
+        fps: null,
+        frameTimeMs: null,
         memoryPressure: "NORMAL",
         activeEntities: 0,
         networkProfile: "FAST",
@@ -77,6 +77,7 @@ class SpatialStateStore {
   }
 
   setCamera(cameraData) {
+    if (!cameraData || typeof cameraData !== "object") return;
     Object.assign(this._state.camera, cameraData);
     spatialEventBus.emit("spatial.camera.changed", this._state.camera);
   }
@@ -106,7 +107,7 @@ class SpatialStateStore {
       entityId,
       entityType,
       active: Boolean(entityId),
-      name: name || entityId,
+      name: name || entityId || "",
       altitude_m: telemetry.altitude_m || 0,
       speed_kts: telemetry.speed_kts || 0,
       heading_deg: telemetry.heading_deg || 0
@@ -119,8 +120,10 @@ class SpatialStateStore {
   }
 
   setLayerVisibility(layerId, isVisible) {
-    this._state.layers[layerId] = Boolean(isVisible);
-    spatialEventBus.emit("spatial.layer.changed", { layerId, isVisible: Boolean(isVisible) });
+    if (layerId in this._state.layers) {
+      this._state.layers[layerId] = Boolean(isVisible);
+      spatialEventBus.emit("spatial.layer.changed", { layerId, isVisible: Boolean(isVisible) });
+    }
   }
 
   setVisualStyle(style) {
@@ -141,6 +144,7 @@ class SpatialStateStore {
   }
 
   addAnnotation(annotation) {
+    if (!annotation) return;
     this._state.annotations.push(annotation);
     spatialEventBus.emit("spatial.annotations.updated", this._state.annotations);
   }
@@ -151,6 +155,7 @@ class SpatialStateStore {
   }
 
   updateDiagnostics(diagUpdate) {
+    if (!diagUpdate || typeof diagUpdate !== "object") return;
     Object.assign(this._state.diagnostics, diagUpdate);
     spatialEventBus.emit("spatial.diagnostics.updated", this._state.diagnostics);
   }

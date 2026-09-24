@@ -13,8 +13,8 @@ from core.spatial.spatial_query_engine import spatial_query_engine
 from core.spatial.provider_manager import provider_manager
 
 
-# Supported visual styles and layers
-VALID_VISUAL_STYLES = {"normal", "retro", "surveillance", "thermal", "anime", "noir", "snow"}
+# Supported visual styles and layers (mapped to verified shader/CSS filter pipeline)
+VALID_VISUAL_STYLES = {"normal", "surveillance", "thermal", "retro", "noir"}
 VALID_MAP_SOURCES = {"photoreal", "esri-imagery", "osm", "bing-aerial", "bing-labels"}
 VALID_LAYERS = {
     "flights", "military", "vessels", "earthquakes", "satellites", "launches",
@@ -178,11 +178,9 @@ def execute_spatial_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str,
 
         # 5. ENABLE / DISABLE / TOGGLE LAYER
         elif tool_name in ["enable_layer", "disable_layer", "toggle_layer"]:
-            layer_id = str(arguments.get("layer_id", "")).lower().strip()
-            if layer_id not in VALID_LAYERS and layer_id not in ["all", "planes", "ships", "satellites", "fires"]:
-                # Alias mapping
-                alias_map = {"planes": "flights", "aircraft": "flights", "ships": "vessels", "wildfires": "firms"}
-                layer_id = alias_map.get(layer_id, layer_id)
+            raw_layer = str(arguments.get("layer_id", "")).lower().strip()
+            alias_map = {"planes": "flights", "aircraft": "flights", "ships": "vessels", "wildfires": "firms", "quakes": "earthquakes"}
+            layer_id = alias_map.get(raw_layer, raw_layer)
 
             if tool_name == "enable_layer":
                 spatial_session.enable_layer(layer_id)

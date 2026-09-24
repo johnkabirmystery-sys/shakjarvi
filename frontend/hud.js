@@ -3476,6 +3476,10 @@ window.switchWorkspace = function(workspaceKey) {
       }
       const inp = document.getElementById("inpSpatialCmd");
       if (inp) setTimeout(() => inp.focus(), 150);
+    } else {
+      if (window.spatialService && typeof window.spatialService.deactivate === "function") {
+        window.spatialService.deactivate();
+      }
     }
   } catch(err) {
     console.warn("Workspace post-switch hook error:", err);
