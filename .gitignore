@@ -27,5 +27,6 @@ data/memory/*.db-shm
 # Backups & Temp
 backup_pre_audit/
 backup_ui_upgrade/
+data/screenshots/
 *.tmp
 *.log
