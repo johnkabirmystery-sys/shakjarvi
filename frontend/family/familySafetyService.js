@@ -1,8 +1,16 @@
 /**
  * J.A.R.V.I.S. Mark XVII — Family Safety & Mobile Companion Service
  * =================================================================
- * Frontend state manager for Authorized Device Registry, Consent Scopes,
- * Safety Alerts, Voluntary Check-ins, and Remote Task Orchestration.
+ * Centralized frontend state manager for Authorized Device Registry,
+ * Consent Scopes, Safety Alerts, Voluntary Check-ins, and Remote Tasks.
+ *
+ * ARCHITECTURE NOTE: This service is the CANONICAL API client for all
+ * family-safety operations. The HUD (hud.js) should progressively
+ * migrate to using this service instead of making direct fetch() calls.
+ * Both currently work because the backend exposes aliases for route paths.
+ *
+ * SECURITY NOTE: The server enforces actor identity server-side.
+ * Client-provided actorId is logged but NOT used for authorization.
  */
 
 export class FamilySafetyService {
@@ -15,13 +23,25 @@ export class FamilySafetyService {
     this.activeCheckins = [];
   }
 
+  /**
+   * Validates a backend API response and returns the parsed data.
+   * Throws if the response indicates failure.
+   */
+  async _validateResponse(resp, context = "API call") {
+    const data = await resp.json();
+    if (!resp.ok || data.ok === false || data.executed === false) {
+      const errorMsg = data.message || data.error || `${context} failed`;
+      console.error(`[FamilySafety] ${context} failed:`, errorMsg);
+      throw new Error(errorMsg);
+    }
+    return data;
+  }
+
   async fetchDevices() {
     try {
       const resp = await fetch("/api/family/devices");
-      const data = await resp.json();
-      if (data.success) {
-        this.devices = data.devices || [];
-      }
+      const data = await this._validateResponse(resp, "Fetch devices");
+      this.devices = data.devices || (data.data && data.data.devices) || [];
       return this.devices;
     } catch (e) {
       console.warn("[FamilySafety] Error fetching devices:", e);
@@ -32,10 +52,8 @@ export class FamilySafetyService {
   async fetchAlerts() {
     try {
       const resp = await fetch("/api/family/alerts");
-      const data = await resp.json();
-      if (data.success) {
-        this.alerts = data.alerts || [];
-      }
+      const data = await this._validateResponse(resp, "Fetch alerts");
+      this.alerts = data.alerts || (data.data && data.data.alerts) || [];
       return this.alerts;
     } catch (e) {
       console.warn("[FamilySafety] Error fetching alerts:", e);
@@ -46,10 +64,8 @@ export class FamilySafetyService {
   async fetchConsents() {
     try {
       const resp = await fetch("/api/family/consent");
-      const data = await resp.json();
-      if (data.success) {
-        this.consents = data.consents || [];
-      }
+      const data = await this._validateResponse(resp, "Fetch consents");
+      this.consents = data.consents || (data.data && data.data.consents) || [];
       return this.consents;
     } catch (e) {
       console.warn("[FamilySafety] Error fetching consents:", e);
@@ -60,10 +76,8 @@ export class FamilySafetyService {
   async fetchReliability() {
     try {
       const resp = await fetch("/api/remote/reliability");
-      const data = await resp.json();
-      if (data.success) {
-        this.reliability = data;
-      }
+      const data = await this._validateResponse(resp, "Fetch reliability");
+      this.reliability = data;
       return this.reliability;
     } catch (e) {
       console.warn("[FamilySafety] Error fetching reliability:", e);
@@ -76,9 +90,9 @@ export class FamilySafetyService {
       const resp = await fetch("/api/family/consent/pause_all", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actorId: "shakil" })
+        body: JSON.stringify({ reason: "Kill switch triggered via FamilySafetyService" })
       });
-      return await resp.json();
+      return await this._validateResponse(resp, "Pause all sharing");
     } catch (e) {
       return { success: false, error: String(e) };
     }
@@ -90,14 +104,13 @@ export class FamilySafetyService {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ownerProfileId: "shakil",
           displayName,
           deviceType,
           platform,
           ttlSeconds: 600
         })
       });
-      return await resp.json();
+      return await this._validateResponse(resp, "Initiate pairing");
     } catch (e) {
       return { success: false, error: String(e) };
     }
@@ -108,9 +121,9 @@ export class FamilySafetyService {
       const resp = await fetch(`/api/family/alerts/${alertId}/dismiss`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actorId: "shakil" })
+        body: JSON.stringify({})
       });
-      return await resp.json();
+      return await this._validateResponse(resp, "Dismiss alert");
     } catch (e) {
       return { success: false, error: String(e) };
     }
@@ -127,7 +140,7 @@ export class FamilySafetyService {
           notes
         })
       });
-      return await resp.json();
+      return await this._validateResponse(resp, "Respond to check-in");
     } catch (e) {
       return { success: false, error: String(e) };
     }
@@ -136,7 +149,7 @@ export class FamilySafetyService {
   async scanLocalNetwork() {
     try {
       const resp = await fetch("/api/family/discovery/scan", { method: "POST" });
-      return await resp.json();
+      return await this._validateResponse(resp, "Network scan");
     } catch (e) {
       return { success: false, error: String(e) };
     }

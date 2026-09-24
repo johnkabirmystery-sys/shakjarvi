@@ -3703,18 +3703,21 @@ function initSpatialHudControls() {
 let pairingCountdownTimer = null;
 let currentActivePairingCode = "";
 
-// Typed Data Adapters (Guarantee Zero Undefined Values)
+// Typed Data Adapters (Guarantee Zero Undefined Values — display "N/A" for missing data, never fabricate)
 function adaptFamilyDevice(d) {
   if (!d) return null;
   const id = d.id || d.deviceId || d.device_id || "dev_unknown";
   const name = d.displayName || d.name || d.device_name || id;
-  const member = d.ownerProfileId || d.ownerId || d.member_name || d.owner || "Shakil";
+  const member = d.ownerProfileId || d.ownerId || d.member_name || d.owner || "Unknown";
   const status = (d.enrollmentStatus || d.status || "OFFLINE").toUpperCase();
-  const ip = d.ipAddress || d.ip_address || "Local Network";
+  const ip = d.ipAddress || d.ip_address || "Not available";
   const battery = d.batteryLevel !== undefined && d.batteryLevel !== null ? `${d.batteryLevel}%` : (d.battery_level !== undefined && d.battery_level !== null ? `${d.battery_level}%` : "N/A");
   const platform = (d.platform || "android").toUpperCase();
   const deviceType = (d.deviceType || "phone").toUpperCase();
-  return { id, name, member, status, ip, battery, platform, deviceType };
+  const rawLastSeen = d.lastSeenAt || d.last_seen_at;
+  const lastSeen = rawLastSeen ? new Date(rawLastSeen * 1000 > 1e12 ? rawLastSeen : rawLastSeen * 1000).toLocaleString() : "Never reported";
+  const dataQuality = d.dataQuality || d.data_quality || "unknown";
+  return { id, name, member, status, ip, battery, platform, deviceType, lastSeen, dataQuality };
 }
 
 function adaptSafetyAlert(a) {
@@ -3813,6 +3816,9 @@ function initFamilySafetyUi() {
   // 1b. Test Companion Client Simulator (Instant Live Enrollment)
   if (btnSimulateEnroll) {
     btnSimulateEnroll.addEventListener("click", async () => {
+      // DEVELOPMENT TEST CLIENT — This simulates a mobile companion enrolling
+      // from the desktop. A real enrollment requires a separate mobile/browser
+      // client with device-generated identity and secure enrollment flow.
       const code = currentActivePairingCode || (lblCode ? lblCode.innerText.trim() : "");
       if (!code || code === "------" || code === "GEN..." || code === "EXPIRED" || code === "ERROR" || code === "FAIL") {
         showToast("Generate an active 6-digit pairing code first", "warning");
@@ -3848,7 +3854,7 @@ function initFamilySafetyUi() {
         showToast(`Enrollment error: ${err.message}`, "error");
       } finally {
         btnSimulateEnroll.disabled = false;
-        btnSimulateEnroll.innerText = "✓ ENROLL COMPANION NOW";
+        btnSimulateEnroll.innerText = "🧪 DEV TEST: ENROLL COMPANION";
       }
     });
   }
@@ -3871,6 +3877,10 @@ function initFamilySafetyUi() {
       try {
         const res = await fetch("/api/family/network/scan", { method: "POST" });
         const data = await res.json();
+        if (!res.ok || data.ok === false) {
+          showToast(data.message || data.error || "Network scan failed", "error", 2500);
+          return;
+        }
         const nodes = data.discovered_nodes || (data.data && data.data.discovered_nodes) || [];
         showToast(`Discovered ${nodes.length} active local network nodes`, "success", 2500);
         await window.renderFamilySafetyWorkspace();
@@ -3898,6 +3908,10 @@ function initFamilySafetyUi() {
           body: JSON.stringify({ reason: "Emergency master kill switch triggered by Sir Shakil from HUD" })
         });
         const data = await res.json();
+        if (!res.ok || data.ok === false || data.executed === false) {
+          showToast(data.message || data.error || "Kill switch operation failed", "error", 4000);
+          return;
+        }
         showToast("🛑 EMERGENCY: All family location sharing has been revoked!", "error", 4000);
         appendLog("warning", "KILL SWITCH", "Master location kill switch activated. All consent tokens purged.");
         await window.renderFamilySafetyWorkspace();
@@ -3919,6 +3933,10 @@ function initFamilySafetyUi() {
           body: JSON.stringify({ severity: "HIGH", message: "Manual test alert from J.A.R.V.I.S. HUD" })
         });
         const data = await res.json();
+        if (!res.ok || data.ok === false || data.executed === false) {
+          showToast(data.message || data.error || "Test alert dispatch failed", "error", 3000);
+          return;
+        }
         showToast("Dispatched verified test alert: " + (data.message || "Alert created"), "warning", 3000);
         await window.renderFamilySafetyWorkspace();
       } catch (err) {
@@ -3938,6 +3956,11 @@ function initFamilySafetyUi() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: "SAFE", note: "Checked in via desktop HUD" })
         });
+        const data = await res.json();
+        if (!res.ok || data.ok === false || data.executed === false) {
+          showToast(data.message || data.error || "Check-in failed", "error", 2500);
+          return;
+        }
         showToast("🟢 Voluntary Check-in: Marked as SAFE", "success", 2500);
         await window.renderFamilySafetyWorkspace();
       } catch (err) {
@@ -3956,6 +3979,11 @@ function initFamilySafetyUi() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: "NEED_HELP", note: "Emergency SOS triggered from HUD" })
         });
+        const data = await res.json();
+        if (!res.ok || data.ok === false || data.executed === false) {
+          showToast(data.message || data.error || "SOS dispatch failed — try again!", "error", 4000);
+          return;
+        }
         showToast("🔴 EMERGENCY SOS Dispatched to Family Platform", "error", 4000);
         await window.renderFamilySafetyWorkspace();
       } catch (err) {
@@ -3976,6 +4004,11 @@ function initFamilySafetyUi() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ interval_minutes: parseInt(mins, 10) })
         });
+        const data = await res.json();
+        if (!res.ok || data.ok === false || data.executed === false) {
+          showToast(data.message || data.error || "Schedule failed", "error", 2500);
+          return;
+        }
         showToast(`Scheduled voluntary check-in in ${mins} minutes`, "info", 2500);
         await window.renderFamilySafetyWorkspace();
       } catch (err) {
@@ -4011,6 +4044,8 @@ window.renderFamilySafetyWorkspace = async function() {
                 </div>
                 <div style="font-size:11px; color:#aaa; margin-top:3px;">
                   Member: <strong style="color:#00e5ff;">${escapeHtml(d.member)}</strong> · Platform: ${escapeHtml(d.platform)} · Batt: ${escapeHtml(d.battery)}
+                  <br>Last Seen: <span style="color:${d.lastSeen === 'Never reported' ? '#ff5252' : '#a7ffeb'}">${escapeHtml(d.lastSeen)}</span>
+                  ${d.dataQuality === 'unknown' ? ' · <span style="color:#ffaa00; font-size:10px;" title="No live telemetry received from this device">⚠ NO TELEMETRY</span>' : ''}
                 </div>
               </div>
               <div>
@@ -4132,6 +4167,10 @@ window.revokeFamilyDevice = async function(deviceId) {
       body: JSON.stringify({ device_id: deviceId, deviceId: deviceId })
     });
     const data = await res.json();
+    if (!res.ok || data.ok === false || data.executed === false) {
+      showToast(data.message || data.error || "Device revocation failed", "error");
+      return;
+    }
     showToast("Device revoked and disconnected", "info");
     await window.renderFamilySafetyWorkspace();
   } catch (err) {
@@ -4147,6 +4186,10 @@ window.dismissFamilyAlert = async function(alertId) {
       body: JSON.stringify({ alert_id: alertId, alertId: alertId })
     });
     const data = await res.json();
+    if (!res.ok || data.ok === false || data.executed === false) {
+      showToast(data.message || data.error || "Alert dismiss failed", "error");
+      return;
+    }
     showToast("Alert dismissed", "info");
     await window.renderFamilySafetyWorkspace();
   } catch (err) {
@@ -4162,6 +4205,10 @@ window.pauseRemoteTask = async function(taskId) {
       body: JSON.stringify({ task_id: taskId, taskId: taskId })
     });
     const data = await res.json();
+    if (!res.ok || data.ok === false || data.executed === false) {
+      showToast(data.message || data.error || "Operation failed", "error");
+      return;
+    }
     showToast(data.message || "Task paused", "info");
     await window.renderFamilySafetyWorkspace();
   } catch (err) {
@@ -4177,6 +4224,10 @@ window.resumeRemoteTask = async function(taskId) {
       body: JSON.stringify({ task_id: taskId, taskId: taskId })
     });
     const data = await res.json();
+    if (!res.ok || data.ok === false || data.executed === false) {
+      showToast(data.message || data.error || "Operation failed", "error");
+      return;
+    }
     showToast(data.message || "Task resumed", "info");
     await window.renderFamilySafetyWorkspace();
   } catch (err) {
@@ -4193,6 +4244,10 @@ window.cancelRemoteTask = async function(taskId) {
       body: JSON.stringify({ task_id: taskId, taskId: taskId })
     });
     const data = await res.json();
+    if (!res.ok || data.ok === false || data.executed === false) {
+      showToast(data.message || data.error || "Operation failed", "error");
+      return;
+    }
     showToast(data.message || "Task canceled", "warning");
     await window.renderFamilySafetyWorkspace();
   } catch (err) {

@@ -15,7 +15,7 @@ from core import voice_engine
 from core import ai_brain
 from core import native_stt
 import asyncio
-from typing import Optional
+from typing import Any, Optional
 from core import memory_engine
 from core import research_engine
 from core import antigravity_bridge
@@ -1111,11 +1111,43 @@ def make_api_response(ok: bool = True, executed: bool = True, simulated: bool = 
         res["error"] = message or error_code
     return res
 
+# SECURITY: Until a verified authentication system is in place, all mutating
+# family-safety operations derive the actor identity from a fixed server-side
+# constant. The request body 'actorId' is IGNORED for authorization decisions.
+# This prevents clients from impersonating users by submitting arbitrary IDs.
+SERVER_AUTHORIZED_ACTOR = "shakil"
+
+def _get_verified_actor(data: dict) -> str:
+    """Return the server-verified actor identity.
+    
+    Currently returns the fixed server-side owner identity.
+    When real authentication is implemented, this should derive
+    the identity from the verified session/token instead.
+    
+    The client-provided actorId is logged but NOT used for authorization.
+    """
+    client_claimed = data.get("actorId") or data.get("actor_id")
+    if client_claimed and client_claimed != SERVER_AUTHORIZED_ACTOR:
+        print(f"[SECURITY] Client claimed actorId='{client_claimed}' — overridden by server identity '{SERVER_AUTHORIZED_ACTOR}'", flush=True)
+    return SERVER_AUTHORIZED_ACTOR
+
 @app.get("/api/family/devices")
 async def list_family_devices(owner_profile_id: Optional[str] = None):
     devices = device_registry.list_devices(owner_profile_id)
     normalized = []
     for d in devices:
+        # Extract real battery level — never fabricate
+        caps = d.get("capabilities") if isinstance(d.get("capabilities"), dict) else {}
+        raw_battery = caps.get("batteryLevel") if caps else None
+        # Extract real connection info — never fabricate
+        conn = d.get("lastKnownConnection") if isinstance(d.get("lastKnownConnection"), dict) else {}
+        raw_ip = conn.get("ip") if conn else None
+        # Extract real timestamps — never fabricate
+        raw_last_seen = d.get("lastSeenAt") or d.get("last_seen_at")
+        # Determine data quality
+        has_telemetry = raw_battery is not None or raw_last_seen is not None or raw_ip is not None
+        data_quality = "live" if has_telemetry else "unknown"
+
         item = {
             "id": d.get("deviceId") or d.get("device_id"),
             "deviceId": d.get("deviceId") or d.get("device_id"),
@@ -1124,9 +1156,9 @@ async def list_family_devices(owner_profile_id: Optional[str] = None):
             "display_name": d.get("displayName") or d.get("display_name", "Unknown Device"),
             "device_name": d.get("displayName") or d.get("display_name", "Unknown Device"),
             "name": d.get("displayName") or d.get("display_name", "Unknown Device"),
-            "ownerProfileId": d.get("ownerProfileId") or d.get("owner_profile_id", "shakil"),
-            "ownerId": d.get("ownerProfileId") or d.get("owner_profile_id", "shakil"),
-            "member_name": d.get("ownerProfileId") or d.get("owner_profile_id", "shakil"),
+            "ownerProfileId": d.get("ownerProfileId") or d.get("owner_profile_id"),
+            "ownerId": d.get("ownerProfileId") or d.get("owner_profile_id"),
+            "member_name": d.get("ownerProfileId") or d.get("owner_profile_id"),
             "deviceType": d.get("deviceType") or d.get("device_type", "phone"),
             "device_type": d.get("deviceType") or d.get("device_type", "phone"),
             "platform": d.get("platform", "android"),
@@ -1137,11 +1169,14 @@ async def list_family_devices(owner_profile_id: Optional[str] = None):
             "consent_status": d.get("consentStatus") or d.get("consent_status", "pending_review"),
             "locationPermission": d.get("locationPermission") or d.get("location_permission", "none"),
             "location_permission": d.get("locationPermission") or d.get("location_permission", "none"),
-            "lastSeenAt": d.get("lastSeenAt") or d.get("last_seen_at", time.time()),
-            "last_seen_at": d.get("lastSeenAt") or d.get("last_seen_at", time.time()),
-            "batteryLevel": (d.get("capabilities") or {}).get("batteryLevel", 85) if isinstance(d.get("capabilities"), dict) else 85,
-            "battery_level": (d.get("capabilities") or {}).get("batteryLevel", 85) if isinstance(d.get("capabilities"), dict) else 85,
-            "ip_address": (d.get("lastKnownConnection") or {}).get("ip", "Local Subnet") if isinstance(d.get("lastKnownConnection"), dict) else "Local Subnet"
+            "lastSeenAt": raw_last_seen,
+            "last_seen_at": raw_last_seen,
+            "batteryLevel": raw_battery,
+            "battery_level": raw_battery,
+            "ip_address": raw_ip,
+            "location": d.get("location"),
+            "dataQuality": data_quality,
+            "data_quality": data_quality
         }
         normalized.append(item)
     return make_api_response(
@@ -1250,7 +1285,7 @@ async def complete_device_pairing(req: Request):
 @app.put("/api/family/devices/{device_id}/permissions")
 async def update_device_permissions_endpoint(device_id: str, req: Request):
     data = await req.json()
-    actor_id = data.get("actorId", "shakil")
+    actor_id = _get_verified_actor(data)
     location_perm = data.get("locationPermission", "none")
     consent_stat = data.get("consentStatus")
     res = device_registry.update_device_permissions(
@@ -1275,7 +1310,7 @@ async def revoke_device_endpoint(device_id: Optional[str] = None, req: Request =
     target_id = device_id or data.get("deviceId") or data.get("device_id")
     if not target_id:
         return make_api_response(ok=False, executed=False, error_code="MISSING_DEVICE_ID", message="device_id is required")
-    actor_id = data.get("actorId") or data.get("actor_id") or "shakil"
+    actor_id = _get_verified_actor(data)
     reason = data.get("reason", "Revoked via J.A.R.V.I.S. HUD")
     res = device_registry.revoke_device(device_id=target_id, actor_id=actor_id, reason=reason)
     if res.get("success"):
@@ -1284,7 +1319,7 @@ async def revoke_device_endpoint(device_id: Optional[str] = None, req: Request =
 
 @app.delete("/api/family/devices/{device_id}")
 async def remove_device_endpoint(device_id: str, req: Request):
-    actor_id = req.query_params.get("actorId", "shakil")
+    actor_id = SERVER_AUTHORIZED_ACTOR
     res = device_registry.remove_device(device_id=device_id, actor_id=actor_id)
     if res.get("success"):
         return make_api_response(ok=True, executed=True, message=f"Device '{device_id}' removed.", data=res)
@@ -1316,7 +1351,7 @@ async def get_participant_consent(participant_id: str):
 @app.put("/api/family/consent/{participant_id}")
 async def update_participant_consent(participant_id: str, req: Request):
     data = await req.json()
-    actor_id = data.get("actorId", participant_id)
+    actor_id = _get_verified_actor(data)
     permissions = data.get("permissions", {})
     res = consent_manager.update_consent(participant_id, actor_id=actor_id, permissions=permissions)
     if res.get("success"):
@@ -1332,7 +1367,7 @@ async def pause_all_family_sharing(req: Request):
             data = await req.json()
         except Exception:
             pass
-    actor_id = data.get("actorId") or data.get("actor_id") or "shakil"
+    actor_id = _get_verified_actor(data)
     res = consent_manager.pause_all_sharing(actor_id=actor_id)
     return make_api_response(
         ok=True,
@@ -1344,7 +1379,7 @@ async def pause_all_family_sharing(req: Request):
 
 @app.delete("/api/family/consent/{participant_id}/history")
 async def purge_participant_history(participant_id: str, req: Request):
-    actor_id = req.query_params.get("actorId", participant_id)
+    actor_id = SERVER_AUTHORIZED_ACTOR
     res = consent_manager.delete_participant_history(participant_id, actor_id=actor_id)
     return make_api_response(ok=True, executed=True, message="Location history purged.", data=res)
 
@@ -1382,10 +1417,10 @@ async def list_safety_alerts(participant_id: Optional[str] = None):
             "alert_type": a.get("alertType") or a.get("alert_type", "safety_signal"),
             "type": a.get("alertType") or a.get("alert_type", "safety_signal"),
             "severity": (a.get("severity") or "LOW").upper(),
-            "triggeredAt": a.get("triggeredAt") or a.get("triggered_at", time.time()),
-            "triggered_at": a.get("triggeredAt") or a.get("triggered_at", time.time()),
-            "createdAt": a.get("triggeredAt") or a.get("triggered_at", time.time()),
-            "created_at": a.get("triggeredAt") or a.get("triggered_at", time.time()),
+            "triggeredAt": a.get("triggeredAt") or a.get("triggered_at"),
+            "triggered_at": a.get("triggeredAt") or a.get("triggered_at"),
+            "createdAt": a.get("triggeredAt") or a.get("triggered_at"),
+            "created_at": a.get("triggeredAt") or a.get("triggered_at"),
             "evidence": a.get("evidence", ""),
             "message": a.get("evidence") or a.get("alert_type", "Safety Alert"),
             "title": a.get("alert_type", "Safety Alert").replace("_", " ").upper(),
@@ -1452,7 +1487,7 @@ async def dismiss_safety_alert_endpoint(alert_id: Optional[str] = None, req: Req
     target_id = alert_id or data.get("alertId") or data.get("alert_id")
     if not target_id:
         return make_api_response(ok=False, executed=False, error_code="MISSING_ALERT_ID", message="alert_id required")
-    actor_id = data.get("actorId") or data.get("actor_id") or "shakil"
+    actor_id = _get_verified_actor(data)
     res = safety_alert_engine.dismiss_alert(target_id, actor_id=actor_id)
     if res.get("success"):
         return make_api_response(ok=True, executed=True, message=f"Alert '{target_id}' dismissed.", data=res)
@@ -1553,7 +1588,7 @@ async def remote_login(req: Request):
 async def remote_revoke_session(req: Request):
     data = await req.json()
     session_id = data.get("sessionId")
-    actor_id = data.get("actorId", "shakil")
+    actor_id = _get_verified_actor(data)
     res = remote_auth.revoke_session(session_id, actor_id=actor_id)
     return make_api_response(ok=True, executed=True, message="Session revoked", data=res)
 
@@ -1561,7 +1596,7 @@ async def remote_revoke_session(req: Request):
 async def remote_revoke_all_sessions(req: Request):
     data = await req.json()
     user_id = data.get("userId", "shakil")
-    actor_id = data.get("actorId", "shakil")
+    actor_id = _get_verified_actor(data)
     res = remote_auth.revoke_all_user_sessions(user_id, actor_id=actor_id)
     return make_api_response(ok=True, executed=True, message="All sessions revoked", data=res)
 
@@ -1764,6 +1799,18 @@ async def get_family_spatial_layers():
                 "coordinates": [loc["longitude"], loc["latitude"], loc.get("altitude_meters", 0.0)]
             }
         })
+
+    geojson = {
+        "type": "FeatureCollection",
+        "features": features
+    }
+    return make_api_response(
+        ok=True,
+        executed=True,
+        simulated=False,
+        message=f"Generated {len(features)} privacy-filtered spatial overlay(s)",
+        data={"geojson": geojson, "featureCount": len(features)}
+    )
 
 def on_stt_status(status: str, label: str):
     if MAIN_SERVER_LOOP and MAIN_SERVER_LOOP.is_running():
