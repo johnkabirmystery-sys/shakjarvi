@@ -34,7 +34,35 @@ async def test_desktop_api():
     assert "Jarvis_Created_Files" in str(target_path)
     print(f"  [PASS]: Desktop folder verified at {target_path}")
 
-    # 2. Emergency cancel
+    # 2. Open project folder & path check
+    proj_res = api.open_project_folder()
+    assert proj_res.get("success") is True
+    print(f"  [PASS]: Project folder open verified at {proj_res['path']}")
+
+    path_res = api.open_path("server.py")
+    assert path_res.get("success") is True
+    print("  [PASS]: Safe open_path operational.")
+
+    # 3. System Telemetry
+    telem = api.get_system_telemetry()
+    assert telem.get("success") is True
+    assert "cpu_percent" in telem
+    assert "memory_percent" in telem
+    assert "disk_free_gb" in telem
+    print(f"  [PASS]: Live System Telemetry (CPU: {telem['cpu_percent']}%, RAM: {telem['memory_percent']}%, Free Disk: {telem['disk_free_gb']} GB)")
+
+    # 4. Version Info
+    ver = api.get_version_info()
+    assert ver.get("success") is True
+    assert ver["version"] == "17.4.2"
+    print(f"  [PASS]: Version info verified ({ver['build']} v{ver['version']}, User: {ver['user']})")
+
+    # 5. Play System Sound (Safe Beep)
+    sound_res = api.play_system_sound("ok")
+    assert sound_res.get("success") is True
+    print("  [PASS]: Native system sound dispatch verified.")
+
+    # 6. Emergency cancel
     cancel_res = api.emergency_cancel()
     assert cancel_res.get("success") is True
     print("  [PASS]: Native emergency_cancel() bridge operational.")

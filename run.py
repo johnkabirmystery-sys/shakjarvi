@@ -83,6 +83,8 @@ class JarvisDesktopApi:
     """Bidirectional Python-JavaScript Bridge for Native Windows 11 Desktop Operations."""
     def __init__(self):
         self._window = None
+        self._is_maximized = False
+        self._is_on_top = False
 
     def set_window(self, window):
         self._window = window
@@ -101,6 +103,16 @@ class JarvisDesktopApi:
             cwd = os.getcwd()
             os.startfile(cwd)
             return {"success": True, "path": cwd}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def open_path(self, path: str):
+        try:
+            p = os.path.abspath(path)
+            if os.path.exists(p):
+                os.startfile(p)
+                return {"success": True, "path": p}
+            return {"success": False, "error": f"Path not found: {path}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -133,6 +145,29 @@ class JarvisDesktopApi:
             return {"success": True}
         return {"success": False}
 
+    def set_always_on_top(self, pin: bool = True):
+        if self._window and hasattr(self._window, "on_top"):
+            try:
+                self._window.on_top = pin
+                self._is_on_top = pin
+                return {"success": True, "on_top": pin}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+        return {"success": False, "error": "Window not initialized"}
+
+    def toggle_always_on_top(self):
+        new_state = not getattr(self, "_is_on_top", False)
+        return self.set_always_on_top(new_state)
+
+    def reload_app(self):
+        if self._window:
+            try:
+                self._window.load_url("http://127.0.0.1:8000")
+                return {"success": True}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+        return {"success": False}
+
     def show_notification(self, title: str, message: str):
         try:
             import subprocess
@@ -141,6 +176,74 @@ class JarvisDesktopApi:
             return {"success": True}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    def play_system_sound(self, sound_type: str = "asterisk"):
+        try:
+            import winsound
+            sounds = {
+                "asterisk": winsound.MB_ICONASTERISK,
+                "exclamation": winsound.MB_ICONEXCLAMATION,
+                "hand": winsound.MB_ICONHAND,
+                "question": winsound.MB_ICONQUESTION,
+                "ok": winsound.MB_OK
+            }
+            winsound.MessageBeep(sounds.get(sound_type.lower(), winsound.MB_OK))
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_system_telemetry(self):
+        try:
+            import psutil
+            cpu_pct = psutil.cpu_percent(interval=None)
+            mem = psutil.virtual_memory()
+            disk = psutil.disk_usage(os.getcwd())
+            battery = psutil.sensors_battery()
+            
+            return {
+                "success": True,
+                "cpu_percent": cpu_pct,
+                "memory_percent": mem.percent,
+                "memory_available_gb": round(mem.available / (1024**3), 2),
+                "disk_free_gb": round(disk.free / (1024**3), 2),
+                "battery": {
+                    "percent": battery.percent if battery else None,
+                    "power_plugged": battery.power_plugged if battery else None
+                } if battery else None
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_native_location(self):
+        """Native IP/network location resolver fallback for desktop environment."""
+        try:
+            import json
+            req = urllib.request.Request("https://ipapi.co/json/", headers={"User-Agent": "JARVIS-Desktop/17.4"})
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                data = json.loads(resp.read().decode())
+                return {
+                    "success": True,
+                    "latitude": data.get("latitude"),
+                    "longitude": data.get("longitude"),
+                    "city": data.get("city"),
+                    "region": data.get("region"),
+                    "country": data.get("country_name"),
+                    "accuracy_meters": 10000.0,
+                    "source": "native_desktop_ip"
+                }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_version_info(self):
+        import platform
+        return {
+            "success": True,
+            "version": "17.4.2",
+            "build": "Mark XVII Native Desktop Edition",
+            "python": platform.python_version(),
+            "os": platform.platform(),
+            "user": os.environ.get("USERNAME", "Sir Shakil")
+        }
 
     def emergency_cancel(self):
         import asyncio
@@ -180,12 +283,12 @@ def start_backend():
     server.run()
 
 def ensure_desktop_shortcut():
-    """Ensures the Windows Desktop shortcut exists and points to START_JARVIS.bat with icon."""
+    """Ensures the Windows Desktop shortcut exists and points to start_jarvis.bat with icon."""
     try:
         import win32com.client
         desktop = os.path.join(os.environ.get('USERPROFILE', ''), 'Desktop')
         shortcut_path = os.path.join(desktop, 'J.A.R.V.I.S.lnk')
-        target_path = os.path.abspath('START_JARVIS.bat')
+        target_path = os.path.abspath('start_jarvis.bat')
         icon_path = os.path.abspath('jarvis_icon.ico')
         
         shell = win32com.client.Dispatch("WScript.Shell")
@@ -196,7 +299,7 @@ def ensure_desktop_shortcut():
             shortcut.IconLocation = icon_path
         shortcut.WindowStyle = 7  # Minimized CMD launcher
         shortcut.save()
-        print("[*] Desktop shortcut confirmed: C:\\Users\\Qbits\\Desktop\\J.A.R.V.I.S.lnk", flush=True)
+        print(f"[*] Desktop shortcut confirmed: {shortcut_path}", flush=True)
     except Exception as e:
         pass
 
