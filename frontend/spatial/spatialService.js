@@ -2,8 +2,15 @@
  * J.A.R.V.I.S. Spatial Intelligence Service (frontend/spatial/spatialService.js)
  * ==============================================================================
  * Master frontend controller for God's Eye View 3D Earth Workspace.
- * Handles lazy startup, Cesium 1.138 integration, WebSocket command dispatch,
- * Stark HUD telemetry HUD overlays, explicit lifecycle states, and graceful teardown.
+ * Orchestrates:
+ * - Cesium 1.138+ runtime lifecycle and ViewerFactory instantiation
+ * - Pluggable TerrainManager with real elevation & honest degraded mode
+ * - 3D TilesetManager and BuildingLayer for architectural 3D geometry
+ * - ImageryLayerManager with provider registry & fail-safe offline handling
+ * - Dedicated CameraController and SceneModeController (3D, 2D, Columbus View)
+ * - RenderLoopController & RenderHealthMonitor for GPU performance budgeting
+ * - SpatialLayerRegistry, Normalized SpatialEntity, and SpatialAnalytics engine
+ * - Stark HUD telemetry, coordinate overlays, entity inspector & clean teardown
  */
 
 import { spatialEventBus } from "./spatialEventBus.js";
@@ -17,6 +24,32 @@ import { selfLocationEngine } from "./selfLocationEngine.js";
 import { locationFusionEngine } from "./locationFusionEngine.js";
 import { buildingResolutionService } from "./buildingResolutionService.js";
 import { locationHistoryManager } from "./locationHistoryManager.js";
+
+// Modular Spatial Runtime Subsystems
+import { cesiumRuntime, RUNTIME_STATUS } from "./runtime/cesiumRuntime.js";
+import { ViewerFactory } from "./runtime/viewerFactory.js";
+import { RenderLoopController } from "./runtime/renderLoopController.js";
+import { CameraController } from "./runtime/cameraController.js";
+import { SceneModeController } from "./runtime/sceneModeController.js";
+import { RenderHealthMonitor } from "./runtime/renderHealthMonitor.js";
+
+// Terrain Subsystem
+import { TerrainManager, TERRAIN_STATUS } from "./terrain/terrainManager.js";
+import { terrainProviderRegistry } from "./terrain/terrainProviderRegistry.js";
+
+// 3D Tiles Subsystem
+import { TilesetManager } from "./tiles/tilesetManager.js";
+import { BuildingLayer } from "./tiles/buildingLayer.js";
+import { TilesetHealth } from "./tiles/tilesetHealth.js";
+
+// Imagery Subsystem
+import { ImageryLayerManager } from "./imagery/imageryLayerManager.js";
+import { imageryProviderRegistry } from "./imagery/imageryProviderRegistry.js";
+
+// Core and Analytics Subsystems
+import { SpatialEntity } from "./core/spatialEntity.js";
+import { spatialLayerRegistry } from "./core/spatialLayerRegistry.js";
+import { SpatialAnalytics } from "./analytics/spatialAnalytics.js";
 
 export const LIFECYCLE_STATES = {
   IDLE: "idle",
@@ -34,6 +67,18 @@ class SpatialService {
     this.viewer = null;
     this.container = null;
     this.lastError = null;
+
+    // Subsystem Controllers
+    this.renderLoop = new RenderLoopController(null);
+    this.cameraController = new CameraController(null);
+    this.sceneModeController = new SceneModeController(null);
+    this.renderHealth = new RenderHealthMonitor(null);
+    this.terrainManager = new TerrainManager(null, spatialEventBus);
+    this.tilesetManager = new TilesetManager(null, spatialEventBus);
+    this.buildingLayer = new BuildingLayer(this.tilesetManager, spatialEventBus);
+    this.tilesetHealth = new TilesetHealth(this.tilesetManager);
+    this.imageryManager = new ImageryLayerManager(null, spatialEventBus);
+
     this._wsListener = null;
     this._busUnsubscribers = [];
 
@@ -67,7 +112,18 @@ class SpatialService {
       this._flashCommandStatus(`ERROR: ${res.error || res.type}`, true);
     });
 
-    this._busUnsubscribers.push(unsub1, unsub2, unsub3, unsub4);
+    const unsub5 = spatialEventBus.on("spatial.terrain.degraded", (info) => {
+      console.warn("[SpatialService] Terrain degraded to ellipsoid:", info.reason);
+      this._updateTerrainHud("ELLIPSOID (DEGRADED)", "#ffab00");
+    });
+
+    const unsub6 = spatialEventBus.on("spatial.terrain.changed", (info) => {
+      const label = info.isRealTerrain ? info.provider.toUpperCase() : "ELLIPSOID";
+      const color = info.isRealTerrain ? "#00ffcc" : "#888888";
+      this._updateTerrainHud(label, color);
+    });
+
+    this._busUnsubscribers.push(unsub1, unsub2, unsub3, unsub4, unsub5, unsub6);
   }
 
   async activate() {
@@ -75,7 +131,7 @@ class SpatialService {
     if (this.lifecycleState === LIFECYCLE_STATES.IDLE || this.lifecycleState === LIFECYCLE_STATES.DESTROYED) {
       await this.init();
     } else if (this.lifecycleState === LIFECYCLE_STATES.READY && this.viewer) {
-      // Re-trigger render and resume performance governor
+      this.renderLoop.resume();
       spatialPerformanceGovernor.resume();
       if (this.viewer.scene) {
         this.viewer.scene.requestRender();
@@ -86,12 +142,12 @@ class SpatialService {
 
   deactivate() {
     this.isActive = false;
+    this.renderLoop.pause();
     spatialPerformanceGovernor.pause();
     spatialEventBus.emit("spatial.deactivated");
   }
 
   async init() {
-    // Prevent concurrent or duplicate initialization
     if (this.lifecycleState === LIFECYCLE_STATES.LOADING || this.lifecycleState === LIFECYCLE_STATES.READY) {
       return;
     }
@@ -108,84 +164,72 @@ class SpatialService {
 
     this.lifecycleState = LIFECYCLE_STATES.LOADING;
     this.lastError = null;
-    console.log("[SpatialService] Initializing 3D Photorealistic Earth Subsystem (Cesium 1.138)...");
+    console.log("[SpatialService] Initializing 3D Photorealistic Earth Subsystem...");
     this._showLoadingIndicator("INITIALIZING SPATIAL INTELLIGENCE CORE...");
 
     try {
-      // 1. Ensure Cesium Base URL is globally configured before any script execution
-      window.CESIUM_BASE_URL = "/spatial/cesium/";
+      // 1. Load Cesium runtime asset bundle
+      const Cesium = await cesiumRuntime.load();
 
-      // 2. Load Cesium 1.138.0 local bundle if not already present on window
-      if (!window.Cesium) {
-        await this._loadCesiumDependencies();
-      }
+      this._showLoadingIndicator("CONFIGURING IMAGERY & 3D TERRAIN...");
 
-      if (!window.Cesium) {
-        throw new Error("Cesium global object unavailable after asset load.");
-      }
-
-      // 3. Configure Cesium global settings
-      if (window.Cesium.Ion) {
-        window.Cesium.Ion.defaultAccessToken = "";
-      }
-
-      this._showLoadingIndicator("GENERATING 3D PHOTOREALISTIC GLOBE...");
-
-      // 4. Initialize Imagery Provider (ArcGIS World Imagery with async fallback)
+      // 2. Resolve primary imagery provider via registry
       let baseLayer = undefined;
       try {
-        if (window.Cesium.ArcGisMapServerImageryProvider && typeof window.Cesium.ArcGisMapServerImageryProvider.fromUrl === "function") {
-          const provider = await window.Cesium.ArcGisMapServerImageryProvider.fromUrl(
-            "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer"
-          );
-          baseLayer = new window.Cesium.ImageryLayer(provider);
-        } else if (window.Cesium.createWorldImageryAsync) {
-          baseLayer = await window.Cesium.createWorldImageryAsync();
-        }
+        const primaryImagery = await imageryProviderRegistry.create("arcgis_imagery");
+        baseLayer = new Cesium.ImageryLayer(primaryImagery);
       } catch (imageryErr) {
-        console.warn("[SpatialService] Primary imagery provider error, using procedural base:", imageryErr);
+        console.warn("[SpatialService] Primary imagery error, attempting OpenStreetMap:", imageryErr);
+        try {
+          const fallbackOsm = await imageryProviderRegistry.create("osm");
+          baseLayer = new Cesium.ImageryLayer(fallbackOsm);
+        } catch (_) {
+          console.warn("[SpatialService] Running in procedural globe mode.");
+        }
       }
 
-      // 5. Instantiate Cesium Viewer with performance-governed settings
-      const viewer = new window.Cesium.Viewer(this.container, {
+      // 3. Create Cesium Viewer via ViewerFactory
+      const viewer = ViewerFactory.create(this.container, {
         baseLayer: baseLayer || false,
-        baseLayerPicker: false,
-        geocoder: false,
-        homeButton: false,
-        infoBox: false,
-        sceneModePicker: false,
-        selectionIndicator: false,
-        timeline: false,
-        navigationHelpButton: false,
-        animation: false,
-        shouldAnimate: true,
-        requestRenderMode: true, // Render governor baseline
-        maximumRenderTimeChange: Infinity
+        depthTestAgainstTerrain: false,
+        enableLighting: false,
+        fog: true,
+        requestRenderMode: true
       });
 
-      // Optimize scene rendering settings
-      viewer.scene.globe.enableLighting = false;
-      viewer.scene.fog.enabled = true;
-      viewer.scene.globe.depthTestAgainstTerrain = false;
-
-      // Attach viewer to adapter and performance governor
       this.viewer = viewer;
+
+      // 4. Attach subsystems to active viewer
+      this.renderLoop.attachViewer(viewer);
+      this.cameraController.attachViewer(viewer);
+      this.sceneModeController.attachViewer(viewer);
+      this.renderHealth.attachViewer(viewer);
+      this.terrainManager.attachViewer(viewer);
+      this.tilesetManager.attachViewer(viewer);
+      this.imageryManager.attachViewer(viewer);
+
+      // Attach legacy/bridge adapter and performance governor
       godsEyeAdapter.attachViewer(viewer);
       spatialPerformanceGovernor.attachViewer(viewer);
 
-      // Verify viewer readiness
+      // 5. Initialize Terrain (Ellipsoid baseline with automatic promotion if configured)
+      await this.terrainManager.setTerrain("ellipsoid");
+
       this.isLoaded = true;
       this.lifecycleState = LIFECYCLE_STATES.READY;
       this._hideLoadingIndicator();
 
       spatialEventBus.emit("spatial.initialized", {
-        version: window.Cesium.VERSION || "1.138.0",
-        containerId: "spatialGlobeContainer"
+        version: Cesium.VERSION || "1.138.0",
+        containerId: "spatialGlobeContainer",
+        terrain: this.terrainManager.getState(),
+        sceneMode: this.sceneModeController.getSceneMode()
       });
-      console.log(`[SpatialService] Spatial Intelligence Engine Online (Cesium ${window.Cesium.VERSION || "1.138.0"}).`);
+
+      console.log(`[SpatialService] Spatial Intelligence Engine Online (Cesium ${Cesium.VERSION || "1.138.0"}).`);
 
       // Initial frame render
-      viewer.scene.requestRender();
+      this.renderLoop.requestRender();
 
     } catch (err) {
       this.lifecycleState = LIFECYCLE_STATES.FAILED;
@@ -196,40 +240,9 @@ class SpatialService {
     }
   }
 
-  async _loadCesiumDependencies() {
-    window.CESIUM_BASE_URL = "/spatial/cesium/";
-
-    // 1. Ensure CSS stylesheet is present
-    if (!document.getElementById("cesiumCss")) {
-      const link = document.createElement("link");
-      link.id = "cesiumCss";
-      link.rel = "stylesheet";
-      link.href = "/spatial/cesium/Widgets/widgets.css";
-      document.head.appendChild(link);
-    }
-
-    // 2. Load Cesium.js script strictly from local vendor bundle
-    return new Promise((resolve, reject) => {
-      const existingScript = document.getElementById("cesiumScript");
-      if (existingScript && window.Cesium) {
-        return resolve();
-      }
-
-      const script = document.createElement("script");
-      script.id = "cesiumScript";
-      script.src = "/spatial/cesium/Cesium.js";
-      script.onload = () => {
-        console.log("[SpatialService] Local Cesium 1.138 bundle loaded successfully.");
-        resolve();
-      };
-      script.onerror = (err) => {
-        console.error("[SpatialService] Failed to load local Cesium.js asset from /spatial/cesium/Cesium.js", err);
-        reject(new Error("Local Cesium.js asset failed to load. Ensure server static mounts are active."));
-      };
-      document.head.appendChild(script);
-    });
-  }
-
+  // -------------------------------------------------------------
+  // HUD TELEMETRY HELPERS
+  // -------------------------------------------------------------
   _updateCoordinateHud(cam) {
     const latEl = document.getElementById("hudSpatialLat");
     const lonEl = document.getElementById("hudSpatialLon");
@@ -254,6 +267,14 @@ class SpatialService {
     }
   }
 
+  _updateTerrainHud(label, color = "#00ffcc") {
+    const el = document.getElementById("hudSpatialTerrainStatus");
+    if (el) {
+      el.textContent = label;
+      el.style.color = color;
+    }
+  }
+
   _updateEntityInspector(entity) {
     const inspector = document.getElementById("spatialEntityInspector");
     const title = document.getElementById("spatialEntityTitle");
@@ -267,7 +288,6 @@ class SpatialService {
     }
 
     if (meta) {
-      // Clear and construct safe DOM elements without innerHTML
       meta.textContent = "";
 
       const makeRow = (label, val, color) => {
@@ -284,7 +304,7 @@ class SpatialService {
       };
 
       meta.appendChild(makeRow("LAYER:", (entity.entityType || entity.layerId || "AIRCRAFT").toUpperCase()));
-      meta.appendChild(makeRow("SOURCE:", (entity.provider || "OPENSKY").toUpperCase()));
+      meta.appendChild(makeRow("SOURCE:", (entity.provider || entity.source?.provider || "OPENSKY").toUpperCase()));
       meta.appendChild(makeRow("STATUS:", entity.status || "TRACKED", "#00ffcc"));
 
       if (Number.isFinite(entity.altitude_m)) {
@@ -292,6 +312,9 @@ class SpatialService {
       }
       if (Number.isFinite(entity.speed_kts)) {
         meta.appendChild(makeRow("SPEED:", `${Math.round(entity.speed_kts)} KTS`));
+      }
+      if (entity.source?.observedAt) {
+        meta.appendChild(makeRow("OBSERVED:", new Date(entity.source.observedAt).toLocaleTimeString()));
       }
     }
   }
@@ -337,10 +360,15 @@ class SpatialService {
       this._wsListener = null;
     }
 
-    this._busUnsubscribers.forEach(unsub => {
+    this._busUnsubscribers.forEach((unsub) => {
       try { unsub(); } catch (_) {}
     });
     this._busUnsubscribers = [];
+
+    this.renderLoop.destroy();
+    this.cameraController.destroy();
+    this.tilesetManager.destroy();
+    this.imageryManager.destroy();
 
     if (godsEyeAdapter) {
       godsEyeAdapter.destroy();
@@ -365,6 +393,8 @@ class SpatialService {
 }
 
 export const spatialService = new SpatialService();
+
+// Export modules to window for browser diagnostics and CLI access
 if (typeof window !== "undefined") {
   window.spatialService = spatialService;
   window.spatialCommandBus = spatialCommandBus;
@@ -376,4 +406,9 @@ if (typeof window !== "undefined") {
   window.locationFusionEngine = locationFusionEngine;
   window.buildingResolutionService = buildingResolutionService;
   window.locationHistoryManager = locationHistoryManager;
+  window.SpatialEntity = SpatialEntity;
+  window.spatialLayerRegistry = spatialLayerRegistry;
+  window.SpatialAnalytics = SpatialAnalytics;
+  window.terrainProviderRegistry = terrainProviderRegistry;
+  window.imageryProviderRegistry = imageryProviderRegistry;
 }

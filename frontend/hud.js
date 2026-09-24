@@ -3537,11 +3537,14 @@ function initSpatialHudControls() {
     });
   });
 
-  // 3. Quick Camera Location Buttons
+  // 3. Quick Camera Location & Scene Mode Buttons
   const locMap = {
     "btnSpatialFindMe": { action: "CENTER_ON_SELF" },
     "btnCenterOnSelf": { action: "CENTER_ON_SELF" },
     "btnSpatialHomeGlobe": { action: "HOME_GLOBE" },
+    "btnSpatialMode3D": { action: "SET_SCENE_MODE", params: { mode: "3D" } },
+    "btnSpatialMode2D": { action: "SET_SCENE_MODE", params: { mode: "2D" } },
+    "btnSpatialModeCV": { action: "SET_SCENE_MODE", params: { mode: "COLUMBUS_VIEW" } },
     "btnSpatialTokyo": { action: "NAVIGATE", params: { latitude: 35.6762, longitude: 139.6503, rangeM: 15000, name: "Tokyo, Japan" } },
     "btnSpatialLondon": { action: "NAVIGATE", params: { latitude: 51.5074, longitude: -0.1278, rangeM: 15000, name: "London, UK" } },
     "btnSpatialNYC": { action: "NAVIGATE", params: { latitude: 40.7128, longitude: -74.0060, rangeM: 15000, name: "New York City, USA" } },
@@ -3557,10 +3560,57 @@ function initSpatialHudControls() {
         if (window.spatialCommandBus) {
           window.spatialCommandBus.dispatch(cmd);
         }
+        if (btnId === "btnSpatialMode3D" || btnId === "btnSpatialMode2D" || btnId === "btnSpatialModeCV") {
+          const modePill = document.getElementById("hudSpatialSceneMode");
+          if (modePill) {
+            modePill.textContent = btnId === "btnSpatialMode3D" ? "3D" : (btnId === "btnSpatialMode2D" ? "2D" : "COLUMBUS");
+          }
+        }
         try { playSound("ack"); } catch(_) {}
       });
     }
   });
+
+  // 3.1 3D Buildings & Terrain Toggles
+  const btnBuildings = document.getElementById("btnToggle3DBuildings");
+  if (btnBuildings) {
+    btnBuildings.addEventListener("click", async () => {
+      btnBuildings.classList.toggle("active");
+      const isNowActive = btnBuildings.classList.contains("active");
+      if (window.spatialCommandBus) {
+        const res = await window.spatialCommandBus.dispatch({ action: "TOGGLE_BUILDINGS" });
+        if (res.ok) {
+          showToast(`3D Buildings: ${isNowActive ? "ENABLED" : "DISABLED"}`, "info", 2000);
+        } else {
+          btnBuildings.classList.remove("active");
+          showToast(`3D Buildings unavailable: ${res.error?.message || "Token required"}`, "warning", 3500);
+        }
+      }
+      try { playSound("blip"); } catch(_) {}
+    });
+  }
+
+  const btnTerrain = document.getElementById("btnToggle3DTerrain");
+  if (btnTerrain) {
+    btnTerrain.addEventListener("click", async () => {
+      btnTerrain.classList.toggle("active");
+      const isNowActive = btnTerrain.classList.contains("active");
+      if (window.spatialCommandBus) {
+        const targetTerrain = isNowActive ? "world_terrain" : "ellipsoid";
+        const res = await window.spatialCommandBus.dispatch({
+          action: "SET_TERRAIN",
+          params: { provider: targetTerrain }
+        });
+        const terrainPill = document.getElementById("hudSpatialTerrainStatus");
+        if (terrainPill) {
+          terrainPill.textContent = res.ok && res.data?.isRealTerrain ? "WORLD TERRAIN" : "ELLIPSOID";
+          terrainPill.style.color = res.ok && res.data?.isRealTerrain ? "#00ffcc" : "#888";
+        }
+        showToast(`Terrain: ${isNowActive ? (res.ok ? "WORLD TERRAIN ACTIVE" : "DEGRADED TO ELLIPSOID") : "ELLIPSOID BASELINE"}`, "info", 2500);
+      }
+      try { playSound("blip"); } catch(_) {}
+    });
+  }
 
   // 3.5 Personal GEOINT & Privacy Controls
   const btnToggleTracking = document.getElementById("btnToggleSelfTracking");

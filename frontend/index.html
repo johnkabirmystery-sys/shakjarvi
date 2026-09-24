@@ -1244,6 +1244,8 @@
               <div class="spatial-hud-pill"><span class="pill-label">LAT:</span> <span id="hudSpatialLat" class="pill-val">+20.0000°</span></div>
               <div class="spatial-hud-pill"><span class="pill-label">LON:</span> <span id="hudSpatialLon" class="pill-val">+0.0000°</span></div>
               <div class="spatial-hud-pill"><span class="pill-label">RANGE:</span> <span id="hudSpatialAlt" class="pill-val">20,000 KM</span></div>
+              <div class="spatial-hud-pill"><span class="pill-label">MODE:</span> <span id="hudSpatialSceneMode" class="pill-val" style="color:#00e5ff;">3D</span></div>
+              <div class="spatial-hud-pill"><span class="pill-label">TERRAIN:</span> <span id="hudSpatialTerrainStatus" class="pill-val" style="color:#888;">ELLIPSOID</span></div>
               <div class="spatial-hud-pill" id="spatialSelfLocPill"><span class="pill-label">SELF LOC:</span> <span id="hudSpatialSelfStatus" class="pill-val" style="color:#888;">STANDBY (OFF)</span></div>
               <div class="spatial-hud-pill" id="spatialGovernorPill"><span class="pill-label">GOVERNOR:</span> <span id="hudSpatialGovernor" class="pill-val" style="color:#00ffcc;">BALANCED</span></div>
             </div>
@@ -1298,6 +1300,8 @@
                   <button class="spatial-layer-chip active" data-layer="weather">⚡ WEATHER</button>
                   <button class="spatial-layer-chip" data-layer="firms">🔥 FIRES</button>
                   <button class="spatial-layer-chip" data-layer="earthquakes">🌊 QUAKES</button>
+                  <button class="spatial-layer-chip" id="btnToggle3DBuildings" data-layer="buildings">🏢 3D BUILDINGS</button>
+                  <button class="spatial-layer-chip" id="btnToggle3DTerrain" data-layer="terrain">⛰ 3D TERRAIN</button>
                   <button class="spatial-layer-chip" data-layer="cctv">🎥 CCTV</button>
                   <button class="spatial-layer-chip" data-layer="radio">📻 RADIO</button>
                 </div>
@@ -1321,6 +1325,9 @@
               <div class="spatial-quick-actions">
                 <button class="spatial-cmd-btn" id="btnSpatialFindMe" style="border-color:#00f0ff; color:#00f0ff;">📍 MY LOC</button>
                 <button class="spatial-cmd-btn" id="btnSpatialHomeGlobe">🌐 GLOBAL</button>
+                <button class="spatial-cmd-btn" id="btnSpatialMode3D" style="border-color:#00e5ff; color:#00e5ff;">🌍 3D GLOBE</button>
+                <button class="spatial-cmd-btn" id="btnSpatialMode2D">🗺 2D MAP</button>
+                <button class="spatial-cmd-btn" id="btnSpatialModeCV">📐 COLUMBUS</button>
                 <button class="spatial-cmd-btn" id="btnSpatialTokyo">🗼 TOKYO</button>
                 <button class="spatial-cmd-btn" id="btnSpatialLondon">🎡 LONDON</button>
                 <button class="spatial-cmd-btn" id="btnSpatialNYC">🗽 NEW YORK</button>

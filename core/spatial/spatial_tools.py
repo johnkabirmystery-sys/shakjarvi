@@ -109,9 +109,16 @@ def execute_spatial_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str,
                     lat = 35.6762  # Default graceful fallthrough
                     lon = 139.6503
             else:
-                name = query or f"{lat:.4f}, {lon:.4f}"
                 lat = float(lat if lat is not None else 20.0)
                 lon = float(lon if lon is not None else 0.0)
+                if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+                    return {
+                        "ok": False,
+                        "tool": tool_name,
+                        "error": f"Invalid coordinates: latitude {lat} must be in [-90, 90], longitude {lon} in [-180, 180].",
+                        "elapsed_ms": round((time.time() - start_time) * 1000, 2)
+                    }
+                name = query or f"{lat:.4f}, {lon:.4f}"
 
             # Update session context
             spatial_session.update_location(
