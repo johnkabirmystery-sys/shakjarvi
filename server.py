@@ -29,6 +29,15 @@ from core import code_sandbox
 from core import vision_copilot
 from core.conversation_controller import conversation_controller, ConversationState
 from core.spatial import spatial_service, spatial_session, spatial_query_engine, provider_manager, execute_spatial_tool
+from core.family_safety import (
+    device_registry, network_discovery, consent_manager,
+    safety_signal_engine, safety_alert_engine, checkin_manager,
+    family_storage
+)
+from core.remote import (
+    remote_auth, remote_command_gateway, persistent_task_manager,
+    reliability_monitor, telephony_gateway, SystemReliabilityState
+)
 
 app = FastAPI(title="Shakil's Assistant (J.A.R.V.I.S.)")
 
@@ -1076,6 +1085,350 @@ def on_native_speech(text):
         )
 
     asyncio.run_coroutine_threadsafe(_handle(), MAIN_SERVER_LOOP)
+
+# ==============================================================================
+# FAMILY SAFETY & DEVICE REGISTRY ENDPOINTS (PHASES 2, 3, 4, 7, 8, 9, 13)
+# ==============================================================================
+
+@app.get("/api/family/devices")
+async def list_family_devices(owner_profile_id: Optional[str] = None):
+    devices = device_registry.list_devices(owner_profile_id)
+    return {"success": True, "count": len(devices), "devices": devices}
+
+@app.post("/api/family/devices/pair/init")
+async def init_device_pairing(req: Request):
+    data = await req.json()
+    owner_id = data.get("ownerProfileId", "shakil")
+    display_name = data.get("displayName", "Personal Phone")
+    device_type = data.get("deviceType", "phone")
+    platform = data.get("platform", "android")
+    ttl = int(data.get("ttlSeconds", 600))
+    res = device_registry.generate_pairing_code(
+        owner_profile_id=owner_id,
+        display_name=display_name,
+        device_type=device_type,
+        platform=platform,
+        ttl_seconds=ttl
+    )
+    return res
+
+@app.post("/api/family/devices/pair/complete")
+async def complete_device_pairing(req: Request):
+    data = await req.json()
+    device_id = data.get("deviceId", "")
+    pairing_code = data.get("pairingCode", "")
+    capabilities = data.get("capabilities", {})
+    client_ip = req.client.host if req.client else None
+    res = device_registry.complete_pairing(
+        device_id=device_id,
+        pairing_code=pairing_code,
+        device_capabilities=capabilities,
+        ip_address=client_ip
+    )
+    return res
+
+@app.put("/api/family/devices/{device_id}/permissions")
+async def update_device_permissions_endpoint(device_id: str, req: Request):
+    data = await req.json()
+    actor_id = data.get("actorId", "shakil")
+    location_perm = data.get("locationPermission", "none")
+    consent_stat = data.get("consentStatus")
+    res = device_registry.update_device_permissions(
+        device_id=device_id,
+        actor_id=actor_id,
+        location_permission=location_perm,
+        consent_status=consent_stat
+    )
+    return res
+
+@app.post("/api/family/devices/{device_id}/revoke")
+async def revoke_device_endpoint(device_id: str, req: Request):
+    data = await req.json()
+    actor_id = data.get("actorId", "shakil")
+    reason = data.get("reason", "Revoked via API")
+    res = device_registry.revoke_device(device_id=device_id, actor_id=actor_id, reason=reason)
+    return res
+
+@app.delete("/api/family/devices/{device_id}")
+async def remove_device_endpoint(device_id: str, req: Request):
+    actor_id = "shakil"
+    if req.query_params.get("actorId"):
+        actor_id = req.query_params.get("actorId")
+    res = device_registry.remove_device(device_id=device_id, actor_id=actor_id)
+    return res
+
+@app.post("/api/family/discovery/scan")
+async def scan_local_network_endpoint():
+    res = network_discovery.scan_local_network()
+    return res
+
+@app.get("/api/family/consent")
+async def list_family_consents():
+    consents = consent_manager.list_consents()
+    return {"success": True, "count": len(consents), "consents": consents}
+
+@app.get("/api/family/consent/{participant_id}")
+async def get_participant_consent(participant_id: str):
+    res = consent_manager.get_or_create_consent(participant_id, owner_profile_id=participant_id)
+    return {"success": True, "consent": res}
+
+@app.put("/api/family/consent/{participant_id}")
+async def update_participant_consent(participant_id: str, req: Request):
+    data = await req.json()
+    actor_id = data.get("actorId", participant_id)
+    permissions = data.get("permissions", {})
+    res = consent_manager.update_consent(participant_id, actor_id=actor_id, permissions=permissions)
+    return res
+
+@app.post("/api/family/consent/pause_all")
+async def pause_all_family_sharing(req: Request):
+    data = await req.json() if req.headers.get("content-type") == "application/json" else {}
+    actor_id = data.get("actorId", "shakil")
+    res = consent_manager.pause_all_sharing(actor_id=actor_id)
+    return res
+
+@app.delete("/api/family/consent/{participant_id}/history")
+async def purge_participant_history(participant_id: str, req: Request):
+    actor_id = participant_id
+    if req.query_params.get("actorId"):
+        actor_id = req.query_params.get("actorId")
+    res = consent_manager.delete_participant_history(participant_id, actor_id=actor_id)
+    return res
+
+@app.post("/api/family/signals")
+async def ingest_safety_signal_endpoint(req: Request):
+    data = await req.json()
+    participant_id = data.get("participantId")
+    signal_type = data.get("signalType")
+    raw_data = data.get("rawData", {})
+    source = data.get("source", "telemetry")
+    confidence = float(data.get("confidence", 1.0))
+    location = data.get("location")
+    res = safety_signal_engine.ingest_signal(
+        participant_id=participant_id,
+        signal_type=signal_type,
+        raw_data=raw_data,
+        source=source,
+        confidence=confidence,
+        location=location
+    )
+    return res
+
+@app.get("/api/family/alerts")
+async def list_safety_alerts(participant_id: Optional[str] = None):
+    alerts = safety_alert_engine.list_active_alerts(participant_id)
+    return {"success": True, "count": len(alerts), "alerts": alerts}
+
+@app.post("/api/family/alerts/{alert_id}/dismiss")
+async def dismiss_safety_alert(alert_id: str, req: Request):
+    data = await req.json() if req.headers.get("content-type") == "application/json" else {}
+    actor_id = data.get("actorId", "shakil")
+    res = safety_alert_engine.dismiss_alert(alert_id, actor_id=actor_id)
+    return res
+
+@app.post("/api/family/alerts/manual")
+async def create_manual_alert(req: Request):
+    data = await req.json()
+    res = safety_alert_engine.trigger_manual_alert(
+        participant_id=data.get("participantId", "shakil"),
+        alert_type=data.get("alertType", "manual_alert"),
+        severity=data.get("severity", "LOW"),
+        evidence=data.get("evidence", "Manual dispatch"),
+        recommended_action=data.get("recommendedAction", "Review status")
+    )
+    return res
+
+@app.post("/api/family/checkin/schedule")
+async def schedule_checkin_endpoint(req: Request):
+    data = await req.json()
+    res = checkin_manager.schedule_checkin(
+        participant_id=data.get("participantId", "shakil"),
+        scheduled_at=float(data.get("scheduledAt", time.time() + 3600)),
+        grace_period_minutes=int(data.get("gracePeriodMinutes", 15)),
+        notes=data.get("notes")
+    )
+    return res
+
+@app.post("/api/family/checkin/respond")
+async def respond_checkin_endpoint(req: Request):
+    data = await req.json()
+    res = checkin_manager.respond_checkin(
+        checkin_id=data.get("checkInId", ""),
+        response_type=data.get("responseType", "safe"),
+        notes=data.get("notes")
+    )
+    return res
+
+@app.get("/api/family/checkin/evaluate")
+async def evaluate_checkins_endpoint():
+    missed = checkin_manager.evaluate_pending_checkins()
+    return {"success": True, "missedCount": len(missed), "missed": missed}
+
+# ==============================================================================
+# REMOTE COMPANION, AUTH, TASKS & TELEPHONY ENDPOINTS (PHASES 5, 6, 10, 11, 12)
+# ==============================================================================
+
+@app.post("/api/remote/auth/login")
+async def remote_login(req: Request):
+    data = await req.json()
+    user_id = data.get("userId", "shakil")
+    device_id = data.get("deviceId", "mobile_companion")
+    role = data.get("role", "family_admin")
+    client_ip = req.client.host if req.client else "127.0.0.1"
+    
+    if not remote_auth.check_rate_limit(client_ip):
+        return {"success": False, "error": "Rate limit exceeded: too many login attempts. Try again in 15 minutes."}
+
+    res = remote_auth.create_session(
+        user_id=user_id,
+        device_id=device_id,
+        role=role,
+        ip_address=client_ip,
+        user_agent=req.headers.get("user-agent")
+    )
+    return res
+
+@app.post("/api/remote/auth/revoke")
+async def remote_revoke_session(req: Request):
+    data = await req.json()
+    session_id = data.get("sessionId")
+    actor_id = data.get("actorId", "shakil")
+    res = remote_auth.revoke_session(session_id, actor_id=actor_id)
+    return res
+
+@app.post("/api/remote/auth/revoke_all")
+async def remote_revoke_all_sessions(req: Request):
+    data = await req.json()
+    user_id = data.get("userId", "shakil")
+    actor_id = data.get("actorId", "shakil")
+    res = remote_auth.revoke_all_user_sessions(user_id, actor_id=actor_id)
+    return res
+
+@app.post("/api/remote/command")
+async def execute_remote_command_endpoint(req: Request):
+    auth_header = req.headers.get("authorization", "")
+    token = auth_header.replace("Bearer ", "").strip() if auth_header.startswith("Bearer ") else None
+    
+    data = await req.json()
+    user_id = data.get("userId", "shakil")
+    role = data.get("role", "family_admin")
+
+    # If token present, validate
+    if token:
+        sess = remote_auth.validate_session(token)
+        if not sess:
+            return {"success": False, "error": "Invalid or expired authorization token."}
+        user_id = sess.get("sub", user_id)
+        role = sess.get("role", role)
+
+    command_text = data.get("command", "")
+    conf_token = data.get("confirmationToken")
+    confirmed = bool(data.get("confirmed", False))
+    client_ip = req.client.host if req.client else None
+
+    res = remote_command_gateway.execute_remote_command(
+        user_id=user_id,
+        command_text=command_text,
+        role=role,
+        confirmation_token=conf_token,
+        confirmed=confirmed,
+        source_channel=data.get("channel", "mobile_app"),
+        ip_address=client_ip
+    )
+    return res
+
+@app.get("/api/remote/tasks")
+async def list_remote_tasks(owner_id: Optional[str] = None):
+    tasks = persistent_task_manager.list_tasks(owner_id)
+    return {"success": True, "count": len(tasks), "tasks": tasks}
+
+@app.post("/api/remote/tasks/create")
+async def create_remote_task_endpoint(req: Request):
+    data = await req.json()
+    res = persistent_task_manager.create_task(
+        owner_id=data.get("ownerId", "shakil"),
+        title=data.get("title", "Background Task"),
+        description=data.get("description", ""),
+        priority=int(data.get("priority", 1)),
+        schedule=data.get("schedule")
+    )
+    return res
+
+@app.post("/api/remote/tasks/{task_id}/pause")
+async def pause_remote_task(task_id: str):
+    res = persistent_task_manager.pause_task(task_id)
+    return res
+
+@app.post("/api/remote/tasks/{task_id}/resume")
+async def resume_remote_task(task_id: str):
+    res = persistent_task_manager.resume_task(task_id)
+    return res
+
+@app.post("/api/remote/tasks/{task_id}/cancel")
+async def cancel_remote_task(task_id: str):
+    res = persistent_task_manager.cancel_task(task_id)
+    return res
+
+@app.get("/api/remote/reliability")
+async def get_system_reliability_endpoint():
+    res = reliability_monitor.get_system_health()
+    return res
+
+@app.post("/api/remote/telephony/call")
+async def telephony_call_endpoint(req: Request):
+    data = await req.json()
+    caller = data.get("callerNumber", "")
+    pin = data.get("callerPin")
+    res = telephony_gateway.handle_incoming_call(caller, caller_pin=pin)
+    return res
+
+@app.post("/api/remote/telephony/command")
+async def telephony_command_endpoint(req: Request):
+    data = await req.json()
+    token = data.get("sessionToken", "")
+    transcript = data.get("transcript", "")
+    res = telephony_gateway.process_voice_call_command(token, transcript)
+    return res
+
+@app.get("/api/family/spatial/layers")
+async def get_family_spatial_layers():
+    """Generates privacy-filtered spatial overlay layers for God's Eye View."""
+    devices = device_registry.list_devices()
+    features = []
+    now = time.time()
+
+    for d in devices:
+        participant_id = d["ownerProfileId"]
+        # Check if live or history sharing is enabled in consent
+        if not consent_manager.check_permission(participant_id, "locationSharingEnabled"):
+            continue
+
+        loc = family_storage.get_latest_location(participant_id)
+        if not loc:
+            continue
+
+        age_seconds = now - loc["recorded_at"]
+        freshness = "LIVE" if age_seconds < 120 else ("LAST KNOWN" if age_seconds < 3600 else "STALE")
+        if d["enrollmentStatus"] == "revoked":
+            freshness = "PERMISSION REVOKED"
+
+        features.append({
+            "type": "Feature",
+            "properties": {
+                "id": f"fam_{participant_id}",
+                "participantId": participant_id,
+                "displayName": d["displayName"],
+                "freshness": freshness,
+                "accuracyMeters": loc.get("accuracy_meters", 15.0),
+                "lastUpdated": loc["recorded_at"],
+                "deviceType": d["deviceType"],
+                "platform": d["platform"]
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [loc["longitude"], loc["latitude"], loc.get("altitude_meters", 0.0)]
+            }
+        })
 
 def on_stt_status(status: str, label: str):
     if MAIN_SERVER_LOOP and MAIN_SERVER_LOOP.is_running():

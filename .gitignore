@@ -24,6 +24,11 @@ data/memory/*.db
 data/memory/*.db-journal
 data/memory/*.db-wal
 data/memory/*.db-shm
+data/family_safety/*.db
+data/family_safety/*.db-journal
+data/family_safety/*.db-wal
+data/family_safety/*.db-shm
+data/family_safety/*.key
 data/location_history/
 data/location_history/*
 
