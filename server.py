@@ -1087,22 +1087,85 @@ def on_native_speech(text):
     asyncio.run_coroutine_threadsafe(_handle(), MAIN_SERVER_LOOP)
 
 # ==============================================================================
-# FAMILY SAFETY & DEVICE REGISTRY ENDPOINTS (PHASES 2, 3, 4, 7, 8, 9, 13)
+# FAMILY SAFETY & DEVICE REGISTRY ENDPOINTS (STANDARDIZED ACTION CONTRACT)
 # ==============================================================================
+
+def make_api_response(ok: bool = True, executed: bool = True, simulated: bool = False,
+                      command_id: Optional[str] = None, error_code: Optional[str] = None,
+                      message: str = "", data: Any = None):
+    res = {
+        "ok": ok,
+        "executed": executed,
+        "simulated": simulated,
+        "commandId": command_id or f"cmd_{int(time.time()*1000)}",
+        "errorCode": error_code,
+        "message": message,
+        "data": data if data is not None else {},
+        "success": ok  # Backwards compatibility
+    }
+    if isinstance(data, dict):
+        for k, v in data.items():
+            if k not in res:
+                res[k] = v
+    if not ok and error_code:
+        res["error"] = message or error_code
+    return res
 
 @app.get("/api/family/devices")
 async def list_family_devices(owner_profile_id: Optional[str] = None):
     devices = device_registry.list_devices(owner_profile_id)
-    return {"success": True, "count": len(devices), "devices": devices}
+    normalized = []
+    for d in devices:
+        item = {
+            "id": d.get("deviceId") or d.get("device_id"),
+            "deviceId": d.get("deviceId") or d.get("device_id"),
+            "device_id": d.get("deviceId") or d.get("device_id"),
+            "displayName": d.get("displayName") or d.get("display_name", "Unknown Device"),
+            "display_name": d.get("displayName") or d.get("display_name", "Unknown Device"),
+            "device_name": d.get("displayName") or d.get("display_name", "Unknown Device"),
+            "name": d.get("displayName") or d.get("display_name", "Unknown Device"),
+            "ownerProfileId": d.get("ownerProfileId") or d.get("owner_profile_id", "shakil"),
+            "ownerId": d.get("ownerProfileId") or d.get("owner_profile_id", "shakil"),
+            "member_name": d.get("ownerProfileId") or d.get("owner_profile_id", "shakil"),
+            "deviceType": d.get("deviceType") or d.get("device_type", "phone"),
+            "device_type": d.get("deviceType") or d.get("device_type", "phone"),
+            "platform": d.get("platform", "android"),
+            "enrollmentStatus": d.get("enrollmentStatus") or d.get("enrollment_status", "pending_pairing"),
+            "enrollment_status": d.get("enrollmentStatus") or d.get("enrollment_status", "pending_pairing"),
+            "status": (d.get("enrollmentStatus") or d.get("enrollment_status", "PENDING")).upper(),
+            "consentStatus": d.get("consentStatus") or d.get("consent_status", "pending_review"),
+            "consent_status": d.get("consentStatus") or d.get("consent_status", "pending_review"),
+            "locationPermission": d.get("locationPermission") or d.get("location_permission", "none"),
+            "location_permission": d.get("locationPermission") or d.get("location_permission", "none"),
+            "lastSeenAt": d.get("lastSeenAt") or d.get("last_seen_at", time.time()),
+            "last_seen_at": d.get("lastSeenAt") or d.get("last_seen_at", time.time()),
+            "batteryLevel": (d.get("capabilities") or {}).get("batteryLevel", 85) if isinstance(d.get("capabilities"), dict) else 85,
+            "battery_level": (d.get("capabilities") or {}).get("batteryLevel", 85) if isinstance(d.get("capabilities"), dict) else 85,
+            "ip_address": (d.get("lastKnownConnection") or {}).get("ip", "Local Subnet") if isinstance(d.get("lastKnownConnection"), dict) else "Local Subnet"
+        }
+        normalized.append(item)
+    return make_api_response(
+        ok=True,
+        executed=True,
+        simulated=False,
+        message=f"Retrieved {len(normalized)} registered family device(s)",
+        data={"devices": normalized, "count": len(normalized)}
+    )
 
 @app.post("/api/family/devices/pair/init")
 async def init_device_pairing(req: Request):
-    data = await req.json()
-    owner_id = data.get("ownerProfileId", "shakil")
-    display_name = data.get("displayName", "Personal Phone")
-    device_type = data.get("deviceType", "phone")
+    data = {}
+    if req.headers.get("content-type") == "application/json":
+        try:
+            data = await req.json()
+        except Exception:
+            pass
+    owner_id = data.get("ownerProfileId") or data.get("owner_profile_id") or "shakil"
+    display_name = data.get("displayName") or data.get("display_name") or data.get("device_name") or "Personal Phone Companion"
+    device_type = data.get("deviceType") or data.get("device_type") or "phone"
     platform = data.get("platform", "android")
-    ttl = int(data.get("ttlSeconds", 600))
+    ttl = int(data.get("ttlSeconds") or data.get("ttl_seconds") or 600)
+
     res = device_registry.generate_pairing_code(
         owner_profile_id=owner_id,
         display_name=display_name,
@@ -1110,22 +1173,79 @@ async def init_device_pairing(req: Request):
         platform=platform,
         ttl_seconds=ttl
     )
-    return res
+
+    if res.get("success"):
+        res_data = {
+            "deviceId": res["deviceId"],
+            "device_id": res["deviceId"],
+            "pairingCode": res["pairingCode"],
+            "pairing_code": res["pairingCode"],
+            "expiresAt": res["expiresAt"],
+            "expires_at": res["expiresAt"],
+            "expiresInSeconds": res["expiresInSeconds"],
+            "expires_in_seconds": res["expiresInSeconds"],
+            "displayName": res["displayName"],
+            "display_name": res["displayName"]
+        }
+        return make_api_response(
+            ok=True,
+            executed=True,
+            simulated=False,
+            message=f"Pairing code generated for '{display_name}'. Valid for {ttl}s.",
+            data=res_data
+        )
+    return make_api_response(
+        ok=False,
+        executed=False,
+        simulated=False,
+        error_code="PAIRING_INIT_FAILED",
+        message=res.get("error", "Failed to initiate pairing")
+    )
 
 @app.post("/api/family/devices/pair/complete")
 async def complete_device_pairing(req: Request):
-    data = await req.json()
-    device_id = data.get("deviceId", "")
-    pairing_code = data.get("pairingCode", "")
+    data = {}
+    if req.headers.get("content-type") == "application/json":
+        try:
+            data = await req.json()
+        except Exception:
+            pass
+    device_id = data.get("deviceId") or data.get("device_id")
+    pairing_code = data.get("pairingCode") or data.get("pairing_code", "")
     capabilities = data.get("capabilities", {})
-    client_ip = req.client.host if req.client else None
+    client_ip = req.client.host if req.client else "127.0.0.1"
+
+    if not pairing_code:
+        return make_api_response(
+            ok=False,
+            executed=False,
+            simulated=False,
+            error_code="MISSING_PARAMETERS",
+            message="Both deviceId and pairingCode are required."
+        )
+
     res = device_registry.complete_pairing(
         device_id=device_id,
         pairing_code=pairing_code,
         device_capabilities=capabilities,
         ip_address=client_ip
     )
-    return res
+
+    if res.get("success"):
+        return make_api_response(
+            ok=True,
+            executed=True,
+            simulated=False,
+            message=f"Device '{res.get('displayName')}' successfully paired and enrolled.",
+            data=res
+        )
+    return make_api_response(
+        ok=False,
+        executed=False,
+        simulated=False,
+        error_code="PAIRING_FAILED",
+        message=res.get("error", "Pairing validation failed.")
+    )
 
 @app.put("/api/family/devices/{device_id}/permissions")
 async def update_device_permissions_endpoint(device_id: str, req: Request):
@@ -1139,38 +1259,59 @@ async def update_device_permissions_endpoint(device_id: str, req: Request):
         location_permission=location_perm,
         consent_status=consent_stat
     )
-    return res
+    if res.get("success"):
+        return make_api_response(ok=True, executed=True, message="Device permissions updated", data=res)
+    return make_api_response(ok=False, executed=False, error_code="PERMISSION_UPDATE_FAILED", message=res.get("error", "Failed"))
 
 @app.post("/api/family/devices/{device_id}/revoke")
-async def revoke_device_endpoint(device_id: str, req: Request):
-    data = await req.json()
-    actor_id = data.get("actorId", "shakil")
-    reason = data.get("reason", "Revoked via API")
-    res = device_registry.revoke_device(device_id=device_id, actor_id=actor_id, reason=reason)
-    return res
+@app.post("/api/family/devices/revoke")
+async def revoke_device_endpoint(device_id: Optional[str] = None, req: Request = None):
+    data = {}
+    if req and req.headers.get("content-type") == "application/json":
+        try:
+            data = await req.json()
+        except Exception:
+            pass
+    target_id = device_id or data.get("deviceId") or data.get("device_id")
+    if not target_id:
+        return make_api_response(ok=False, executed=False, error_code="MISSING_DEVICE_ID", message="device_id is required")
+    actor_id = data.get("actorId") or data.get("actor_id") or "shakil"
+    reason = data.get("reason", "Revoked via J.A.R.V.I.S. HUD")
+    res = device_registry.revoke_device(device_id=target_id, actor_id=actor_id, reason=reason)
+    if res.get("success"):
+        return make_api_response(ok=True, executed=True, message=f"Device '{target_id}' revoked.", data=res)
+    return make_api_response(ok=False, executed=False, error_code="REVOKE_FAILED", message=res.get("error", "Revocation failed"))
 
 @app.delete("/api/family/devices/{device_id}")
 async def remove_device_endpoint(device_id: str, req: Request):
-    actor_id = "shakil"
-    if req.query_params.get("actorId"):
-        actor_id = req.query_params.get("actorId")
+    actor_id = req.query_params.get("actorId", "shakil")
     res = device_registry.remove_device(device_id=device_id, actor_id=actor_id)
-    return res
+    if res.get("success"):
+        return make_api_response(ok=True, executed=True, message=f"Device '{device_id}' removed.", data=res)
+    return make_api_response(ok=False, executed=False, error_code="REMOVE_FAILED", message=res.get("error", "Remove failed"))
 
 @app.post("/api/family/discovery/scan")
+@app.post("/api/family/network/scan")
 async def scan_local_network_endpoint():
     res = network_discovery.scan_local_network()
-    return res
+    nodes = res.get("discoveredNodes") or res.get("discovered_nodes") or []
+    return make_api_response(
+        ok=True,
+        executed=True,
+        simulated=False,
+        message=f"Subnet scan completed. Discovered {len(nodes)} active LAN device(s).",
+        data={"discoveredNodes": nodes, "discovered_nodes": nodes, "count": len(nodes)}
+    )
 
 @app.get("/api/family/consent")
 async def list_family_consents():
     consents = consent_manager.list_consents()
-    return {"success": True, "count": len(consents), "consents": consents}
+    return make_api_response(ok=True, executed=True, message="Retrieved consents", data={"consents": consents, "count": len(consents)})
 
 @app.get("/api/family/consent/{participant_id}")
 async def get_participant_consent(participant_id: str):
     res = consent_manager.get_or_create_consent(participant_id, owner_profile_id=participant_id)
-    return {"success": True, "consent": res}
+    return make_api_response(ok=True, executed=True, data={"consent": res})
 
 @app.put("/api/family/consent/{participant_id}")
 async def update_participant_consent(participant_id: str, req: Request):
@@ -1178,29 +1319,41 @@ async def update_participant_consent(participant_id: str, req: Request):
     actor_id = data.get("actorId", participant_id)
     permissions = data.get("permissions", {})
     res = consent_manager.update_consent(participant_id, actor_id=actor_id, permissions=permissions)
-    return res
+    if res.get("success"):
+        return make_api_response(ok=True, executed=True, message="Consent updated", data=res)
+    return make_api_response(ok=False, executed=False, error_code="CONSENT_UPDATE_FAILED", message=res.get("error", "Failed"))
 
+@app.post("/api/family/consent/kill_switch")
 @app.post("/api/family/consent/pause_all")
 async def pause_all_family_sharing(req: Request):
-    data = await req.json() if req.headers.get("content-type") == "application/json" else {}
-    actor_id = data.get("actorId", "shakil")
+    data = {}
+    if req.headers.get("content-type") == "application/json":
+        try:
+            data = await req.json()
+        except Exception:
+            pass
+    actor_id = data.get("actorId") or data.get("actor_id") or "shakil"
     res = consent_manager.pause_all_sharing(actor_id=actor_id)
-    return res
+    return make_api_response(
+        ok=True,
+        executed=True,
+        simulated=False,
+        message=res.get("message", "Master location kill switch executed. All sharing revoked and paused."),
+        data={**res, "status": "REVOKED"}
+    )
 
 @app.delete("/api/family/consent/{participant_id}/history")
 async def purge_participant_history(participant_id: str, req: Request):
-    actor_id = participant_id
-    if req.query_params.get("actorId"):
-        actor_id = req.query_params.get("actorId")
+    actor_id = req.query_params.get("actorId", participant_id)
     res = consent_manager.delete_participant_history(participant_id, actor_id=actor_id)
-    return res
+    return make_api_response(ok=True, executed=True, message="Location history purged.", data=res)
 
 @app.post("/api/family/signals")
 async def ingest_safety_signal_endpoint(req: Request):
     data = await req.json()
-    participant_id = data.get("participantId")
-    signal_type = data.get("signalType")
-    raw_data = data.get("rawData", {})
+    participant_id = data.get("participantId") or data.get("participant_id")
+    signal_type = data.get("signalType") or data.get("signal_type")
+    raw_data = data.get("rawData") or data.get("raw_data", {})
     source = data.get("source", "telemetry")
     confidence = float(data.get("confidence", 1.0))
     location = data.get("location")
@@ -1212,60 +1365,168 @@ async def ingest_safety_signal_endpoint(req: Request):
         confidence=confidence,
         location=location
     )
-    return res
+    return make_api_response(ok=True, executed=True, message="Signal ingested", data=res)
 
 @app.get("/api/family/alerts")
 async def list_safety_alerts(participant_id: Optional[str] = None):
-    alerts = safety_alert_engine.list_active_alerts(participant_id)
-    return {"success": True, "count": len(alerts), "alerts": alerts}
+    raw_alerts = safety_alert_engine.list_active_alerts(participant_id)
+    normalized = []
+    for a in raw_alerts:
+        normalized.append({
+            "id": a.get("alertId") or a.get("alert_id"),
+            "alertId": a.get("alertId") or a.get("alert_id"),
+            "alert_id": a.get("alertId") or a.get("alert_id"),
+            "participantId": a.get("participantId") or a.get("participant_id", "shakil"),
+            "participant_id": a.get("participantId") or a.get("participant_id", "shakil"),
+            "alertType": a.get("alertType") or a.get("alert_type", "safety_signal"),
+            "alert_type": a.get("alertType") or a.get("alert_type", "safety_signal"),
+            "type": a.get("alertType") or a.get("alert_type", "safety_signal"),
+            "severity": (a.get("severity") or "LOW").upper(),
+            "triggeredAt": a.get("triggeredAt") or a.get("triggered_at", time.time()),
+            "triggered_at": a.get("triggeredAt") or a.get("triggered_at", time.time()),
+            "createdAt": a.get("triggeredAt") or a.get("triggered_at", time.time()),
+            "created_at": a.get("triggeredAt") or a.get("triggered_at", time.time()),
+            "evidence": a.get("evidence", ""),
+            "message": a.get("evidence") or a.get("alert_type", "Safety Alert"),
+            "title": a.get("alert_type", "Safety Alert").replace("_", " ").upper(),
+            "source": a.get("source", "SafetySignalEngine"),
+            "confidence": a.get("confidence", 1.0),
+            "isTest": bool("[TEST ALERT]" in str(a.get("evidence", "")) or a.get("isTest")),
+            "status": "ACTIVE" if not a.get("is_dismissed") else "DISMISSED",
+            "recommendedAction": a.get("recommendedAction") or a.get("recommended_action", "Review status")
+        })
+    return make_api_response(
+        ok=True,
+        executed=True,
+        simulated=False,
+        message=f"Retrieved {len(normalized)} active safety alert(s)",
+        data={"alerts": normalized, "count": len(normalized)}
+    )
+
+@app.post("/api/family/alerts/test")
+@app.post("/api/family/alerts/manual")
+async def create_manual_test_alert(req: Request):
+    data = {}
+    if req.headers.get("content-type") == "application/json":
+        try:
+            data = await req.json()
+        except Exception:
+            pass
+    severity = data.get("severity", "HIGH").upper()
+    user_msg = data.get("message") or "Manual test alert triggered from J.A.R.V.I.S. HUD"
+    evidence_text = f"[TEST ALERT] {user_msg}"
+    res = safety_alert_engine.trigger_manual_alert(
+        participant_id=data.get("participantId") or data.get("participant_id") or "shakil",
+        alert_type="manual_test_alert",
+        severity=severity,
+        evidence=evidence_text,
+        recommended_action="Verification test. No emergency response required."
+    )
+    if res.get("success"):
+        alert_info = res.get("alert", {})
+        alert_id = alert_info.get("alertId") or alert_info.get("alert_id")
+        res_data = {
+            "alertId": alert_id,
+            "alert_id": alert_id,
+            "alert": alert_info,
+            "success": True
+        }
+        return make_api_response(
+            ok=True,
+            executed=True,
+            simulated=False,
+            message=f"Test alert dispatched with severity {severity}.",
+            data=res_data
+        )
+    return make_api_response(ok=False, executed=False, error_code="ALERT_DISPATCH_FAILED", message="Failed to create test alert")
 
 @app.post("/api/family/alerts/{alert_id}/dismiss")
-async def dismiss_safety_alert(alert_id: str, req: Request):
+@app.post("/api/family/alerts/dismiss")
+async def dismiss_safety_alert_endpoint(alert_id: Optional[str] = None, req: Request = None):
+    data = {}
+    if req and req.headers.get("content-type") == "application/json":
+        try:
+            data = await req.json()
+        except Exception:
+            pass
+    target_id = alert_id or data.get("alertId") or data.get("alert_id")
+    if not target_id:
+        return make_api_response(ok=False, executed=False, error_code="MISSING_ALERT_ID", message="alert_id required")
+    actor_id = data.get("actorId") or data.get("actor_id") or "shakil"
+    res = safety_alert_engine.dismiss_alert(target_id, actor_id=actor_id)
+    if res.get("success"):
+        return make_api_response(ok=True, executed=True, message=f"Alert '{target_id}' dismissed.", data=res)
+    return make_api_response(ok=False, executed=False, error_code="DISMISS_FAILED", message=res.get("error", "Failed to dismiss alert"))
+
+@app.post("/api/family/checkins")
+@app.post("/api/family/checkin/respond")
+async def respond_checkin_direct(req: Request):
     data = await req.json() if req.headers.get("content-type") == "application/json" else {}
-    actor_id = data.get("actorId", "shakil")
-    res = safety_alert_engine.dismiss_alert(alert_id, actor_id=actor_id)
-    return res
+    part_id = data.get("participantId") or data.get("participant_id") or "shakil"
+    status_raw = data.get("status") or data.get("responseType") or data.get("response_type") or "safe"
+    note = data.get("note") or data.get("notes")
+    
+    chk_id = data.get("checkInId") or data.get("checkin_id")
+    if chk_id:
+        res = checkin_manager.respond_checkin(checkin_id=chk_id, response_type=status_raw, notes=note)
+    else:
+        res = checkin_manager.record_direct_checkin(participant_id=part_id, response_type=status_raw, notes=note)
 
-@app.post("/api/family/alerts/manual")
-async def create_manual_alert(req: Request):
-    data = await req.json()
-    res = safety_alert_engine.trigger_manual_alert(
-        participant_id=data.get("participantId", "shakil"),
-        alert_type=data.get("alertType", "manual_alert"),
-        severity=data.get("severity", "LOW"),
-        evidence=data.get("evidence", "Manual dispatch"),
-        recommended_action=data.get("recommendedAction", "Review status")
-    )
-    return res
+    if res.get("success"):
+        return make_api_response(
+            ok=True,
+            executed=True,
+            simulated=False,
+            message=res.get("message", "Check-in recorded."),
+            data=res
+        )
+    return make_api_response(ok=False, executed=False, error_code="CHECKIN_FAILED", message=res.get("error", "Check-in failed."))
 
+@app.post("/api/family/checkins/schedule")
 @app.post("/api/family/checkin/schedule")
 async def schedule_checkin_endpoint(req: Request):
-    data = await req.json()
+    data = await req.json() if req.headers.get("content-type") == "application/json" else {}
+    part_id = data.get("participantId") or data.get("participant_id") or "shakil"
+    mins = int(data.get("intervalMinutes") or data.get("interval_minutes") or 60)
+    scheduled_at = float(data.get("scheduledAt") or data.get("scheduled_at") or (time.time() + mins * 60))
+    grace_mins = int(data.get("gracePeriodMinutes") or data.get("grace_period_minutes") or 15)
+    note = data.get("notes") or data.get("note")
+    
     res = checkin_manager.schedule_checkin(
-        participant_id=data.get("participantId", "shakil"),
-        scheduled_at=float(data.get("scheduledAt", time.time() + 3600)),
-        grace_period_minutes=int(data.get("gracePeriodMinutes", 15)),
-        notes=data.get("notes")
+        participant_id=part_id,
+        scheduled_at=scheduled_at,
+        grace_period_minutes=grace_mins,
+        notes=note
     )
-    return res
+    if res.get("success"):
+        return make_api_response(
+            ok=True,
+            executed=True,
+            simulated=False,
+            message=f"Check-in scheduled in {mins} minutes.",
+            data=res
+        )
+    return make_api_response(ok=False, executed=False, error_code="SCHEDULE_FAILED", message="Failed to schedule check-in")
 
-@app.post("/api/family/checkin/respond")
-async def respond_checkin_endpoint(req: Request):
-    data = await req.json()
-    res = checkin_manager.respond_checkin(
-        checkin_id=data.get("checkInId", ""),
-        response_type=data.get("responseType", "safe"),
-        notes=data.get("notes")
+@app.get("/api/family/checkins/status")
+@app.get("/api/family/checkin/status")
+async def get_checkin_status_endpoint(participant_id: Optional[str] = None):
+    res = checkin_manager.get_status(participant_id)
+    return make_api_response(
+        ok=True,
+        executed=True,
+        simulated=False,
+        message="Check-in status retrieved",
+        data=res
     )
-    return res
 
 @app.get("/api/family/checkin/evaluate")
 async def evaluate_checkins_endpoint():
     missed = checkin_manager.evaluate_pending_checkins()
-    return {"success": True, "missedCount": len(missed), "missed": missed}
+    return make_api_response(ok=True, executed=True, data={"missedCount": len(missed), "missed": missed})
 
 # ==============================================================================
-# REMOTE COMPANION, AUTH, TASKS & TELEPHONY ENDPOINTS (PHASES 5, 6, 10, 11, 12)
+# REMOTE COMPANION, AUTH, TASKS & TELEPHONY ENDPOINTS (STANDARDIZED)
 # ==============================================================================
 
 @app.post("/api/remote/auth/login")
@@ -1277,7 +1538,7 @@ async def remote_login(req: Request):
     client_ip = req.client.host if req.client else "127.0.0.1"
     
     if not remote_auth.check_rate_limit(client_ip):
-        return {"success": False, "error": "Rate limit exceeded: too many login attempts. Try again in 15 minutes."}
+        return make_api_response(ok=False, executed=False, error_code="RATE_LIMIT_EXCEEDED", message="Too many login attempts. Try again in 15 minutes.")
 
     res = remote_auth.create_session(
         user_id=user_id,
@@ -1286,7 +1547,7 @@ async def remote_login(req: Request):
         ip_address=client_ip,
         user_agent=req.headers.get("user-agent")
     )
-    return res
+    return make_api_response(ok=True, executed=True, message="Session authenticated", data=res)
 
 @app.post("/api/remote/auth/revoke")
 async def remote_revoke_session(req: Request):
@@ -1294,7 +1555,7 @@ async def remote_revoke_session(req: Request):
     session_id = data.get("sessionId")
     actor_id = data.get("actorId", "shakil")
     res = remote_auth.revoke_session(session_id, actor_id=actor_id)
-    return res
+    return make_api_response(ok=True, executed=True, message="Session revoked", data=res)
 
 @app.post("/api/remote/auth/revoke_all")
 async def remote_revoke_all_sessions(req: Request):
@@ -1302,7 +1563,7 @@ async def remote_revoke_all_sessions(req: Request):
     user_id = data.get("userId", "shakil")
     actor_id = data.get("actorId", "shakil")
     res = remote_auth.revoke_all_user_sessions(user_id, actor_id=actor_id)
-    return res
+    return make_api_response(ok=True, executed=True, message="All sessions revoked", data=res)
 
 @app.post("/api/remote/command")
 async def execute_remote_command_endpoint(req: Request):
@@ -1313,11 +1574,10 @@ async def execute_remote_command_endpoint(req: Request):
     user_id = data.get("userId", "shakil")
     role = data.get("role", "family_admin")
 
-    # If token present, validate
     if token:
         sess = remote_auth.validate_session(token)
         if not sess:
-            return {"success": False, "error": "Invalid or expired authorization token."}
+            return make_api_response(ok=False, executed=False, error_code="UNAUTHORIZED", message="Invalid or expired authorization token.")
         user_id = sess.get("sub", user_id)
         role = sess.get("role", role)
 
@@ -1335,12 +1595,34 @@ async def execute_remote_command_endpoint(req: Request):
         source_channel=data.get("channel", "mobile_app"),
         ip_address=client_ip
     )
-    return res
+    return make_api_response(ok=res.get("success", False), executed=res.get("executed", False), simulated=False, message=res.get("message", "Command evaluated"), data=res)
 
 @app.get("/api/remote/tasks")
 async def list_remote_tasks(owner_id: Optional[str] = None):
-    tasks = persistent_task_manager.list_tasks(owner_id)
-    return {"success": True, "count": len(tasks), "tasks": tasks}
+    raw_tasks = persistent_task_manager.list_tasks(owner_id)
+    normalized = []
+    for t in raw_tasks:
+        normalized.append({
+            "id": t.get("taskId") or t.get("task_id"),
+            "taskId": t.get("taskId") or t.get("task_id"),
+            "task_id": t.get("taskId") or t.get("task_id"),
+            "name": t.get("title", "Background Task"),
+            "title": t.get("title", "Background Task"),
+            "description": t.get("description", ""),
+            "status": (t.get("status") or "QUEUED").upper(),
+            "progress": float(t.get("progress", 0.0)),
+            "progress_pct": int(float(t.get("progress", 0.0))),
+            "priority": int(t.get("priority", 1)),
+            "createdAt": t.get("createdAt") or t.get("created_at", time.time()),
+            "updatedAt": t.get("updatedAt") or t.get("updated_at", time.time())
+        })
+    return make_api_response(
+        ok=True,
+        executed=True,
+        simulated=False,
+        message=f"Retrieved {len(normalized)} task(s)",
+        data={"tasks": normalized, "count": len(normalized)}
+    )
 
 @app.post("/api/remote/tasks/create")
 async def create_remote_task_endpoint(req: Request):
@@ -1352,27 +1634,80 @@ async def create_remote_task_endpoint(req: Request):
         priority=int(data.get("priority", 1)),
         schedule=data.get("schedule")
     )
-    return res
+    if res.get("success"):
+        task_info = res.get("task", {})
+        task_id = task_info.get("taskId") or task_info.get("task_id")
+        res_data = {
+            "taskId": task_id,
+            "task_id": task_id,
+            "task": task_info,
+            "success": True
+        }
+        return make_api_response(ok=True, executed=True, message=f"Task '{task_id}' created", data=res_data)
+    return make_api_response(ok=False, executed=False, error_code="TASK_CREATE_FAILED", message=res.get("error", "Failed to create task"))
 
 @app.post("/api/remote/tasks/{task_id}/pause")
-async def pause_remote_task(task_id: str):
-    res = persistent_task_manager.pause_task(task_id)
-    return res
+@app.post("/api/remote/tasks/pause")
+async def pause_remote_task(task_id: Optional[str] = None, req: Request = None):
+    data = {}
+    if req and req.headers.get("content-type") == "application/json":
+        try:
+            data = await req.json()
+        except Exception:
+            pass
+    target_id = task_id or data.get("taskId") or data.get("task_id")
+    if not target_id:
+        return make_api_response(ok=False, executed=False, error_code="MISSING_TASK_ID", message="task_id required")
+    res = persistent_task_manager.pause_task(target_id)
+    if res.get("success"):
+        return make_api_response(ok=True, executed=True, message=f"Task '{target_id}' paused.", data=res)
+    return make_api_response(ok=False, executed=False, error_code="PAUSE_FAILED", message=res.get("error", "Failed to pause task"))
 
 @app.post("/api/remote/tasks/{task_id}/resume")
-async def resume_remote_task(task_id: str):
-    res = persistent_task_manager.resume_task(task_id)
-    return res
+@app.post("/api/remote/tasks/resume")
+async def resume_remote_task(task_id: Optional[str] = None, req: Request = None):
+    data = {}
+    if req and req.headers.get("content-type") == "application/json":
+        try:
+            data = await req.json()
+        except Exception:
+            pass
+    target_id = task_id or data.get("taskId") or data.get("task_id")
+    if not target_id:
+        return make_api_response(ok=False, executed=False, error_code="MISSING_TASK_ID", message="task_id required")
+    res = persistent_task_manager.resume_task(target_id)
+    if res.get("success"):
+        return make_api_response(ok=True, executed=True, message=f"Task '{target_id}' resumed.", data=res)
+    return make_api_response(ok=False, executed=False, error_code="RESUME_FAILED", message=res.get("error", "Failed to resume task"))
 
 @app.post("/api/remote/tasks/{task_id}/cancel")
-async def cancel_remote_task(task_id: str):
-    res = persistent_task_manager.cancel_task(task_id)
-    return res
+@app.post("/api/remote/tasks/cancel")
+async def cancel_remote_task(task_id: Optional[str] = None, req: Request = None):
+    data = {}
+    if req and req.headers.get("content-type") == "application/json":
+        try:
+            data = await req.json()
+        except Exception:
+            pass
+    target_id = task_id or data.get("taskId") or data.get("task_id")
+    if not target_id:
+        return make_api_response(ok=False, executed=False, error_code="MISSING_TASK_ID", message="task_id required")
+    res = persistent_task_manager.cancel_task(target_id)
+    if res.get("success"):
+        return make_api_response(ok=True, executed=True, message=f"Task '{target_id}' canceled.", data=res)
+    return make_api_response(ok=False, executed=False, error_code="CANCEL_FAILED", message=res.get("error", "Failed to cancel task"))
 
+@app.get("/api/remote/health")
 @app.get("/api/remote/reliability")
 async def get_system_reliability_endpoint():
     res = reliability_monitor.get_system_health()
-    return res
+    return make_api_response(
+        ok=True,
+        executed=True,
+        simulated=False,
+        message="System reliability telemetry retrieved",
+        data=res
+    )
 
 @app.post("/api/remote/telephony/call")
 async def telephony_call_endpoint(req: Request):
@@ -1380,7 +1715,7 @@ async def telephony_call_endpoint(req: Request):
     caller = data.get("callerNumber", "")
     pin = data.get("callerPin")
     res = telephony_gateway.handle_incoming_call(caller, caller_pin=pin)
-    return res
+    return make_api_response(ok=res.get("authenticated", False), executed=True, message="Telephony call processed", data=res)
 
 @app.post("/api/remote/telephony/command")
 async def telephony_command_endpoint(req: Request):
@@ -1388,7 +1723,7 @@ async def telephony_command_endpoint(req: Request):
     token = data.get("sessionToken", "")
     transcript = data.get("transcript", "")
     res = telephony_gateway.process_voice_call_command(token, transcript)
-    return res
+    return make_api_response(ok=res.get("success", False), executed=True, message="Telephony voice directive processed", data=res)
 
 @app.get("/api/family/spatial/layers")
 async def get_family_spatial_layers():

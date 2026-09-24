@@ -61,13 +61,28 @@ class FamilyDeviceRegistry:
             "displayName": display_name
         }
 
-    def complete_pairing(self, device_id: str, pairing_code: str,
+    def complete_pairing(self, device_id: Optional[str], pairing_code: str,
                          device_capabilities: Optional[Dict[str, Any]] = None,
                          ip_address: Optional[str] = None) -> Dict[str, Any]:
         """Validates the pairing code on the target device and activates enrollment."""
-        device = self.storage.get_device(device_id)
-        if not device:
-            return {"success": False, "error": "Device not found."}
+        if not pairing_code or not pairing_code.strip():
+            return {"success": False, "error": "Pairing code is required."}
+
+        code_hash = hashlib.sha256(pairing_code.strip().encode()).hexdigest()
+
+        if not device_id:
+            device = self.storage.find_device_by_pairing_code_hash(code_hash)
+            if not device:
+                return {"success": False, "error": "Invalid or expired pairing code."}
+            device_id = device["deviceId"]
+        else:
+            device = self.storage.get_device(device_id)
+            if not device:
+                # Fallback to lookup by code hash
+                device = self.storage.find_device_by_pairing_code_hash(code_hash)
+                if not device:
+                    return {"success": False, "error": "Device not found."}
+                device_id = device["deviceId"]
         
         if device["enrollmentStatus"] == EnrollmentStatus.ENROLLED.value:
             return {"success": False, "error": "Device is already enrolled."}
@@ -79,7 +94,6 @@ class FamilyDeviceRegistry:
         if time.time() > expires_at:
             return {"success": False, "error": "Pairing code has expired. Request a new code."}
 
-        code_hash = hashlib.sha256(pairing_code.strip().encode()).hexdigest()
         if not hmac.compare_digest(code_hash, device.get("pairingCodeHash") or ""):
             self.storage.log_audit(
                 event_type="DEVICE_PAIRING_FAILED",

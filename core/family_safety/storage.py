@@ -257,6 +257,15 @@ class FamilySafetyStorage:
                 return None
             return self._row_to_device(row)
 
+    def find_device_by_pairing_code_hash(self, code_hash: str) -> Optional[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM family_devices WHERE pairing_code_hash = ?", (code_hash,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return self._row_to_device(row)
+
     def list_devices(self, owner_profile_id: Optional[str] = None) -> List[Dict[str, Any]]:
         with self._get_connection() as conn:
             cursor = conn.cursor()

@@ -110,6 +110,85 @@ class CheckInManager:
                         source="scheduler_check"
                     )
                     missed.append(chk)
-        return missed
+    def record_direct_checkin(self, participant_id: str, response_type: str, notes: Optional[str] = None) -> Dict[str, Any]:
+        """Records an immediate voluntary check-in directly without needing a pending scheduled record."""
+        now = time.time()
+        resp_clean = response_type.lower().strip()
+        chk = CheckInRecord(
+            participantId=participant_id,
+            scheduledAt=now,
+            status="confirmed" if (resp_clean in ["safe", "i_am_safe"]) else "alerted",
+            responseType="safe" if (resp_clean in ["safe", "i_am_safe"]) else "need_help",
+            respondedAt=now,
+            notes=notes or ("Direct check-in via HUD" if resp_clean in ["safe", "i_am_safe"] else "SOS emergency triggered via HUD")
+        )
+        data = chk.model_dump()
+        self.storage.save_checkin(data)
+
+        if resp_clean in ["safe", "i_am_safe"]:
+            self.signal_engine.ingest_signal(
+                participant_id=participant_id,
+                signal_type=SignalType.MANUAL_CHECKIN.value,
+                raw_data={"checkInId": chk.checkInId, "status": "safe", "notes": notes},
+                source="hud_direct_checkin"
+            )
+            return {"success": True, "status": "confirmed", "message": "Direct safety check-in recorded.", "checkin": data}
+        else:
+            self.signal_engine.ingest_signal(
+                participant_id=participant_id,
+                signal_type=SignalType.VOLUNTARY_SOS.value,
+                raw_data={"checkInId": chk.checkInId, "message": notes or "Emergency SOS direct check-in"},
+                source="hud_direct_sos"
+            )
+            return {"success": True, "status": "alerted", "message": "Emergency SOS alert dispatched to safety matrix.", "checkin": data}
+
+    def get_status(self, participant_id: Optional[str] = None) -> Dict[str, Any]:
+        """Retrieves the latest check-in and next pending scheduled check-in."""
+        with self.storage._get_connection() as conn:
+            cursor = conn.cursor()
+            # 1. Latest responded checkin
+            if participant_id:
+                cursor.execute("""
+                    SELECT * FROM family_checkins 
+                    WHERE participant_id = ? AND responded_at IS NOT NULL
+                    ORDER BY responded_at DESC LIMIT 1
+                """, (participant_id,))
+            else:
+                cursor.execute("""
+                    SELECT * FROM family_checkins 
+                    WHERE responded_at IS NOT NULL
+                    ORDER BY responded_at DESC LIMIT 1
+                """)
+            latest_row = cursor.fetchone()
+            latest = dict(latest_row) if latest_row else None
+
+            # 2. Next pending scheduled checkin
+            now = time.time()
+            if participant_id:
+                cursor.execute("""
+                    SELECT * FROM family_checkins 
+                    WHERE participant_id = ? AND status = 'pending' AND scheduled_at > ?
+                    ORDER BY scheduled_at ASC LIMIT 1
+                """, (participant_id, now))
+            else:
+                cursor.execute("""
+                    SELECT * FROM family_checkins 
+                    WHERE status = 'pending' AND scheduled_at > ?
+                    ORDER BY scheduled_at ASC LIMIT 1
+                """, (now,))
+            next_row = cursor.fetchone()
+            next_pending = dict(next_row) if next_row else None
+
+            status_label = "ALL CLEAR"
+            if latest and latest.get("response_type") == "need_help":
+                status_label = "ASSISTANCE REQUESTED"
+
+            return {
+                "success": True,
+                "status": status_label,
+                "lastCheckIn": latest,
+                "nextScheduled": next_pending["scheduled_at"] if next_pending else None,
+                "nextScheduledIso": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(next_pending["scheduled_at"])) if next_pending else None
+            }
 
 checkin_manager = CheckInManager()

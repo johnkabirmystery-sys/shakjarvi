@@ -3698,7 +3698,46 @@ function initSpatialHudControls() {
 // ----------------------------------------------------
 // FAMILY SAFETY & REMOTE COMPANION ENGINE
 // ----------------------------------------------------
+// FAMILY SAFETY & REMOTE COMPANION WORKSPACE (E2E OPERATIONAL)
+// ----------------------------------------------------
 let pairingCountdownTimer = null;
+let currentActivePairingCode = "";
+
+// Typed Data Adapters (Guarantee Zero Undefined Values)
+function adaptFamilyDevice(d) {
+  if (!d) return null;
+  const id = d.id || d.deviceId || d.device_id || "dev_unknown";
+  const name = d.displayName || d.name || d.device_name || id;
+  const member = d.ownerProfileId || d.ownerId || d.member_name || d.owner || "Shakil";
+  const status = (d.enrollmentStatus || d.status || "OFFLINE").toUpperCase();
+  const ip = d.ipAddress || d.ip_address || "Local Network";
+  const battery = d.batteryLevel !== undefined && d.batteryLevel !== null ? `${d.batteryLevel}%` : (d.battery_level !== undefined && d.battery_level !== null ? `${d.battery_level}%` : "N/A");
+  const platform = (d.platform || "android").toUpperCase();
+  const deviceType = (d.deviceType || "phone").toUpperCase();
+  return { id, name, member, status, ip, battery, platform, deviceType };
+}
+
+function adaptSafetyAlert(a) {
+  if (!a) return null;
+  const id = a.id || a.alertId || a.alert_id || "alert_unknown";
+  const severity = (a.severity || "LOW").toUpperCase();
+  const title = a.title || (a.alertType ? a.alertType.replace(/_/g, " ").toUpperCase() : "SAFETY SIGNAL");
+  const message = a.message || a.evidence || a.recommendedAction || "Safety anomaly detected";
+  const isTest = Boolean(a.isTest || (typeof message === "string" && message.includes("[TEST ALERT]")) || (typeof a.evidence === "string" && a.evidence.includes("[TEST ALERT]")));
+  const rawTime = a.triggeredAt || a.triggered_at || a.createdAt || a.created_at || Date.now();
+  const timeStr = typeof rawTime === "number" ? new Date(rawTime * 1000 > 1e12 ? rawTime : rawTime * 1000).toLocaleTimeString() : new Date(rawTime).toLocaleTimeString();
+  return { id, severity, title, message, isTest, timeStr };
+}
+
+function adaptRemoteTask(t) {
+  if (!t) return null;
+  const id = t.id || t.taskId || t.task_id || "task_unknown";
+  const name = t.name || t.title || t.description || "Background Task";
+  const status = (t.status || "QUEUED").toUpperCase();
+  const progress = Math.round(Number(t.progress !== undefined ? t.progress : (t.progress_pct !== undefined ? t.progress_pct : 0)));
+  const isPaused = status === "PAUSED";
+  return { id, name, status, progress, isPaused };
+}
 
 function initFamilySafetyUi() {
   // 1. Pair Phone Button & Modal
@@ -3707,23 +3746,38 @@ function initFamilySafetyUi() {
   const btnClosePair = document.getElementById("btnClosePairing");
   const lblCode = document.getElementById("lblPairingCode");
   const lblTimer = document.getElementById("lblPairingTimer");
+  const badgePairing = document.getElementById("badgePairingStatus");
+  const btnSimulateEnroll = document.getElementById("btnSimulateEnroll");
+  const inpTestDeviceName = document.getElementById("inpTestDeviceName");
 
   if (btnPair) {
     btnPair.addEventListener("click", async () => {
       playSound("blip");
       if (modalPair) modalPair.style.display = "block";
       if (lblCode) lblCode.innerText = "GEN...";
+      if (badgePairing) {
+        badgePairing.innerText = "REQUESTING CODE";
+        badgePairing.style.color = "#00f0ff";
+      }
 
       try {
         const res = await fetch("/api/family/devices/pair/init", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ device_name: "Phone Companion" })
+          body: JSON.stringify({ device_name: "Phone Companion", owner_id: "shakil" })
         });
         const data = await res.json();
-        if (data.pairing_code) {
-          if (lblCode) lblCode.innerText = data.pairing_code;
-          let remaining = data.expires_in_seconds || 600;
+        const code = data.pairing_code || (data.data && data.data.pairing_code) || data.pairingCode || (data.data && data.data.pairingCode);
+        const ttl = data.expires_in_seconds || (data.data && data.data.expires_in_seconds) || data.expiresInSeconds || 600;
+
+        if (code) {
+          currentActivePairingCode = code;
+          if (lblCode) lblCode.innerText = code;
+          if (badgePairing) {
+            badgePairing.innerText = "CODE ACTIVE";
+            badgePairing.style.color = "#38ef7d";
+          }
+          let remaining = ttl;
           if (pairingCountdownTimer) clearInterval(pairingCountdownTimer);
           pairingCountdownTimer = setInterval(() => {
             remaining--;
@@ -3731,15 +3785,70 @@ function initFamilySafetyUi() {
             if (remaining <= 0) {
               clearInterval(pairingCountdownTimer);
               if (lblCode) lblCode.innerText = "EXPIRED";
+              if (badgePairing) {
+                badgePairing.innerText = "EXPIRED";
+                badgePairing.style.color = "#ff5252";
+              }
             }
           }, 1000);
         } else {
           if (lblCode) lblCode.innerText = "ERROR";
-          showToast(data.error || "Pairing initiation failed", "error");
+          if (badgePairing) {
+            badgePairing.innerText = "ERROR";
+            badgePairing.style.color = "#ff5252";
+          }
+          showToast(data.message || data.error || "Pairing initiation failed", "error");
         }
       } catch (err) {
         if (lblCode) lblCode.innerText = "FAIL";
+        if (badgePairing) {
+          badgePairing.innerText = "NET FAIL";
+          badgePairing.style.color = "#ff5252";
+        }
         showToast("Network error: " + err.message, "error");
+      }
+    });
+  }
+
+  // 1b. Test Companion Client Simulator (Instant Live Enrollment)
+  if (btnSimulateEnroll) {
+    btnSimulateEnroll.addEventListener("click", async () => {
+      const code = currentActivePairingCode || (lblCode ? lblCode.innerText.trim() : "");
+      if (!code || code === "------" || code === "GEN..." || code === "EXPIRED" || code === "ERROR" || code === "FAIL") {
+        showToast("Generate an active 6-digit pairing code first", "warning");
+        return;
+      }
+      const devName = inpTestDeviceName ? inpTestDeviceName.value.trim() : "Shakil's Galaxy S24 Ultra";
+      btnSimulateEnroll.disabled = true;
+      btnSimulateEnroll.innerText = "ENROLLING...";
+      try {
+        const res = await fetch("/api/family/devices/pair/complete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pairingCode: code,
+            pairing_code: code,
+            displayName: devName,
+            device_name: devName,
+            deviceType: "phone",
+            platform: "android"
+          })
+        });
+        const data = await res.json();
+        if (data.ok || data.success) {
+          playSound("ack");
+          showToast(`✅ Companion device '${devName}' successfully paired & enrolled!`, "success", 3500);
+          if (modalPair) modalPair.style.display = "none";
+          if (pairingCountdownTimer) clearInterval(pairingCountdownTimer);
+          await window.renderFamilySafetyWorkspace();
+        } else {
+          showToast(`Pairing failed: ${data.message || data.error || "Invalid code"}`, "error", 4000);
+        }
+      } catch (err) {
+        showToast(`Enrollment error: ${err.message}`, "error");
+      } finally {
+        btnSimulateEnroll.disabled = false;
+        btnSimulateEnroll.innerText = "✓ ENROLL COMPANION NOW";
       }
     });
   }
@@ -3762,7 +3871,8 @@ function initFamilySafetyUi() {
       try {
         const res = await fetch("/api/family/network/scan", { method: "POST" });
         const data = await res.json();
-        showToast(`Discovered ${data.discovered_nodes?.length || 0} active local devices`, "success", 2500);
+        const nodes = data.discovered_nodes || (data.data && data.data.discovered_nodes) || [];
+        showToast(`Discovered ${nodes.length} active local network nodes`, "success", 2500);
         await window.renderFamilySafetyWorkspace();
       } catch (err) {
         showToast("Wi-Fi scan failed: " + err.message, "error");
@@ -3809,7 +3919,7 @@ function initFamilySafetyUi() {
           body: JSON.stringify({ severity: "HIGH", message: "Manual test alert from J.A.R.V.I.S. HUD" })
         });
         const data = await res.json();
-        showToast("Triggered test alert: " + (data.message || "Alert dispatched"), "warning", 3000);
+        showToast("Dispatched verified test alert: " + (data.message || "Alert created"), "warning", 3000);
         await window.renderFamilySafetyWorkspace();
       } catch (err) {
         showToast("Test alert failed: " + err.message, "error");
@@ -3882,27 +3992,29 @@ window.renderFamilySafetyWorkspace = async function() {
     try {
       const res = await fetch("/api/family/devices");
       const data = await res.json();
-      const devices = data.devices || [];
+      const rawDevices = data.devices || (data.data && data.data.devices) || [];
+      const devices = rawDevices.map(adaptFamilyDevice).filter(Boolean);
+
       if (devices.length === 0) {
         deviceList.innerHTML = `<div style="color:#777; font-size:12px; text-align:center; padding:20px;">No registered devices. Click <strong>+ PAIR PHONE</strong> to connect a mobile device.</div>`;
       } else {
         deviceList.innerHTML = devices.map(d => {
-          const isOnline = d.status === "ACTIVE" || d.status === "ONLINE";
+          const isOnline = d.status === "ACTIVE" || d.status === "ONLINE" || d.status === "AUTHORIZED";
           const statusColor = isOnline ? "#38ef7d" : "#888";
           return `
             <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(0,240,255,0.15); border-radius:6px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
               <div>
                 <div style="font-weight:700; color:#fff; font-size:13px; display:flex; align-items:center; gap:6px;">
                   <span>📱</span>
-                  <span>${escapeHtml(d.device_name || d.device_id)}</span>
-                  <span style="font-size:10px; color:${statusColor}; border:1px solid ${statusColor}; padding:1px 5px; border-radius:3px;">${escapeHtml(d.status || 'OFFLINE')}</span>
+                  <span>${escapeHtml(d.name)}</span>
+                  <span style="font-size:10px; color:${statusColor}; border:1px solid ${statusColor}; padding:1px 5px; border-radius:3px;">${escapeHtml(d.status)}</span>
                 </div>
                 <div style="font-size:11px; color:#aaa; margin-top:3px;">
-                  Member: <strong style="color:#00e5ff;">${escapeHtml(d.member_name || 'Primary')}</strong> · IP: ${escapeHtml(d.ip_address || 'Local')} · Batt: ${d.battery_level ? d.battery_level + '%' : 'N/A'}
+                  Member: <strong style="color:#00e5ff;">${escapeHtml(d.member)}</strong> · Platform: ${escapeHtml(d.platform)} · Batt: ${escapeHtml(d.battery)}
                 </div>
               </div>
               <div>
-                <button class="hud-btn" onclick="window.revokeFamilyDevice('${escapeHtml(d.device_id)}')" style="padding:3px 8px; font-size:10px; border-color:#ff5252; color:#ff5252;">REVOKE</button>
+                <button class="hud-btn" onclick="window.revokeFamilyDevice('${escapeHtml(d.id)}')" style="padding:3px 8px; font-size:10px; border-color:#ff5252; color:#ff5252;">REVOKE</button>
               </div>
             </div>
           `;
@@ -3919,22 +4031,26 @@ window.renderFamilySafetyWorkspace = async function() {
     try {
       const res = await fetch("/api/family/alerts");
       const data = await res.json();
-      const alerts = data.alerts || [];
+      const rawAlerts = data.alerts || (data.data && data.data.alerts) || [];
+      const alerts = rawAlerts.map(adaptSafetyAlert).filter(Boolean);
+
       if (alerts.length === 0) {
         alertsList.innerHTML = `<div style="color:#777; font-size:12px; text-align:center; padding:20px;">Zero active safety alerts. All family safety indicators normal.</div>`;
       } else {
         alertsList.innerHTML = alerts.map(a => {
           const sevColor = a.severity === "CRITICAL" ? "#ff3344" : a.severity === "HIGH" ? "#ff7744" : a.severity === "MEDIUM" ? "#ffaa00" : "#00e5ff";
+          const testBadge = a.isTest ? `<span style="background:rgba(0,240,255,0.2); color:#00f0ff; font-size:9px; font-weight:700; padding:1px 4px; border-radius:2px; margin-left:4px;">TEST ONLY</span>` : "";
           return `
             <div style="background:rgba(255,50,50,0.06); border:1px solid ${sevColor}; border-radius:6px; padding:10px; display:flex; justify-content:space-between; align-items:center;">
-              <div>
+              <div style="flex:1; margin-right:12px;">
                 <div style="display:flex; align-items:center; gap:6px;">
                   <span style="background:${sevColor}; color:#000; font-size:9px; font-weight:900; padding:1px 5px; border-radius:3px;">${escapeHtml(a.severity)}</span>
-                  <span style="font-weight:700; color:#fff; font-size:12px;">${escapeHtml(a.message || a.title)}</span>
+                  ${testBadge}
+                  <span style="font-weight:700; color:#fff; font-size:12px;">${escapeHtml(a.message)}</span>
                 </div>
-                <div style="font-size:10px; color:#aaa; margin-top:4px;">${new Date(a.created_at || Date.now()).toLocaleTimeString()}</div>
+                <div style="font-size:10px; color:#aaa; margin-top:4px;">Type: ${escapeHtml(a.title)} · Timestamp: ${escapeHtml(a.timeStr)}</div>
               </div>
-              <button class="hud-btn" onclick="window.dismissFamilyAlert('${escapeHtml(a.alert_id)}')" style="padding:3px 8px; font-size:10px;">DISMISS</button>
+              <button class="hud-btn" onclick="window.dismissFamilyAlert('${escapeHtml(a.id)}')" style="padding:3px 8px; font-size:10px;">DISMISS</button>
             </div>
           `;
         }).join("");
@@ -3951,8 +4067,17 @@ window.renderFamilySafetyWorkspace = async function() {
     try {
       const res = await fetch("/api/family/checkins/status");
       const data = await res.json();
-      if (lblNextCheckin) lblNextCheckin.innerText = data.next_scheduled ? new Date(data.next_scheduled).toLocaleTimeString() : "None scheduled";
-      if (lblCheckinStatus) lblCheckinStatus.innerText = data.status || "ALL CLEAR";
+      const statusData = data.data || data;
+      const nextTime = statusData.next_scheduled || statusData.nextScheduled;
+      if (lblNextCheckin) {
+        if (nextTime) {
+          const dateObj = typeof nextTime === "number" ? new Date(nextTime * 1000 > 1e12 ? nextTime : nextTime * 1000) : new Date(nextTime);
+          lblNextCheckin.innerText = dateObj.toLocaleTimeString();
+        } else {
+          lblNextCheckin.innerText = "None scheduled";
+        }
+      }
+      if (lblCheckinStatus) lblCheckinStatus.innerText = statusData.status || "ALL CLEAR";
     } catch (err) {}
   }
 
@@ -3962,30 +4087,30 @@ window.renderFamilySafetyWorkspace = async function() {
     try {
       const res = await fetch("/api/remote/tasks");
       const data = await res.json();
-      const tasks = data.tasks || [];
+      const rawTasks = data.tasks || (data.data && data.data.tasks) || [];
+      const tasks = rawTasks.map(adaptRemoteTask).filter(Boolean);
+
       if (tasks.length === 0) {
         tasksList.innerHTML = `<div style="color:#777; font-size:12px; text-align:center; padding:20px;">No persistent tasks currently running.</div>`;
       } else {
         tasksList.innerHTML = tasks.map(t => {
-          const isPaused = t.status === "PAUSED";
-          const prog = t.progress_pct || 0;
           return `
-            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(0,240,255,0.15); border-radius:6px; padding:10px;">
+            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(0,240,255,0.15); border-radius:6px; padding:10px; margin-bottom:6px;">
               <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight:700; color:#fff; font-size:12px;">${escapeHtml(t.description || t.task_id)}</span>
+                <span style="font-weight:700; color:#fff; font-size:12px;">${escapeHtml(t.name)}</span>
                 <span style="font-size:10px; color:#00e5ff; border:1px solid #00e5ff; padding:1px 5px; border-radius:3px;">${escapeHtml(t.status)}</span>
               </div>
-              <div class="ref-progress-bar-bg" style="height:4px; margin-top:6px;">
-                <div class="ref-progress-bar-fill" style="width:${prog}%;"></div>
+              <div class="ref-progress-bar-bg" style="height:4px; margin-top:6px; background:rgba(255,255,255,0.1); border-radius:2px; overflow:hidden;">
+                <div class="ref-progress-bar-fill" style="width:${t.progress}%; height:100%; background:#00e5ff;"></div>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; font-size:11px;">
-                <span style="color:#888;">Progress: ${prog}%</span>
+                <span style="color:#888;">Progress: ${t.progress}%</span>
                 <div style="display:flex; gap:6px;">
-                  ${isPaused 
-                    ? `<button class="hud-btn" onclick="window.resumeRemoteTask('${escapeHtml(t.task_id)}')" style="padding:2px 6px; font-size:10px; border-color:#38ef7d; color:#38ef7d;">RESUME</button>`
-                    : `<button class="hud-btn" onclick="window.pauseRemoteTask('${escapeHtml(t.task_id)}')" style="padding:2px 6px; font-size:10px; border-color:#ffaa00; color:#ffaa00;">PAUSE</button>`
+                  ${t.isPaused 
+                    ? `<button class="hud-btn" onclick="window.resumeRemoteTask('${escapeHtml(t.id)}')" style="padding:2px 6px; font-size:10px; border-color:#38ef7d; color:#38ef7d;">RESUME</button>`
+                    : `<button class="hud-btn" onclick="window.pauseRemoteTask('${escapeHtml(t.id)}')" style="padding:2px 6px; font-size:10px; border-color:#ffaa00; color:#ffaa00;">PAUSE</button>`
                   }
-                  <button class="hud-btn" onclick="window.cancelRemoteTask('${escapeHtml(t.task_id)}')" style="padding:2px 6px; font-size:10px; border-color:#ff5252; color:#ff5252;">CANCEL</button>
+                  <button class="hud-btn" onclick="window.cancelRemoteTask('${escapeHtml(t.id)}')" style="padding:2px 6px; font-size:10px; border-color:#ff5252; color:#ff5252;">CANCEL</button>
                 </div>
               </div>
             </div>
@@ -4004,8 +4129,9 @@ window.revokeFamilyDevice = async function(deviceId) {
     const res = await fetch("/api/family/devices/revoke", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ device_id: deviceId })
+      body: JSON.stringify({ device_id: deviceId, deviceId: deviceId })
     });
+    const data = await res.json();
     showToast("Device revoked and disconnected", "info");
     await window.renderFamilySafetyWorkspace();
   } catch (err) {
@@ -4018,8 +4144,9 @@ window.dismissFamilyAlert = async function(alertId) {
     const res = await fetch("/api/family/alerts/dismiss", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ alert_id: alertId })
+      body: JSON.stringify({ alert_id: alertId, alertId: alertId })
     });
+    const data = await res.json();
     showToast("Alert dismissed", "info");
     await window.renderFamilySafetyWorkspace();
   } catch (err) {
@@ -4029,12 +4156,13 @@ window.dismissFamilyAlert = async function(alertId) {
 
 window.pauseRemoteTask = async function(taskId) {
   try {
-    await fetch("/api/remote/tasks/pause", {
+    const res = await fetch("/api/remote/tasks/pause", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ task_id: taskId })
+      body: JSON.stringify({ task_id: taskId, taskId: taskId })
     });
-    showToast("Task paused", "info");
+    const data = await res.json();
+    showToast(data.message || "Task paused", "info");
     await window.renderFamilySafetyWorkspace();
   } catch (err) {
     showToast("Pause error: " + err.message, "error");
@@ -4043,12 +4171,13 @@ window.pauseRemoteTask = async function(taskId) {
 
 window.resumeRemoteTask = async function(taskId) {
   try {
-    await fetch("/api/remote/tasks/resume", {
+    const res = await fetch("/api/remote/tasks/resume", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ task_id: taskId })
+      body: JSON.stringify({ task_id: taskId, taskId: taskId })
     });
-    showToast("Task resumed", "info");
+    const data = await res.json();
+    showToast(data.message || "Task resumed", "info");
     await window.renderFamilySafetyWorkspace();
   } catch (err) {
     showToast("Resume error: " + err.message, "error");
@@ -4058,12 +4187,13 @@ window.resumeRemoteTask = async function(taskId) {
 window.cancelRemoteTask = async function(taskId) {
   if (!confirm(`Cancel and terminate task ${taskId}?`)) return;
   try {
-    await fetch("/api/remote/tasks/cancel", {
+    const res = await fetch("/api/remote/tasks/cancel", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ task_id: taskId })
+      body: JSON.stringify({ task_id: taskId, taskId: taskId })
     });
-    showToast("Task canceled", "warning");
+    const data = await res.json();
+    showToast(data.message || "Task canceled", "warning");
     await window.renderFamilySafetyWorkspace();
   } catch (err) {
     showToast("Cancel error: " + err.message, "error");
