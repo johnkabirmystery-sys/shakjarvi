@@ -11,7 +11,7 @@ import urllib.request
 def create_shortcut():
     desktop = os.path.join(os.environ['USERPROFILE'], 'Desktop')
     shortcut_path = os.path.join(desktop, 'J.A.R.V.I.S.lnk')
-    target_path = os.path.abspath('START_JARVIS.bat')
+    target_path = os.path.abspath('start_jarvis.bat')
     icon_path = os.path.abspath('jarvis_icon.ico')
     
     if not os.path.exists(icon_path):
