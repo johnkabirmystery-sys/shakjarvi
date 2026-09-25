@@ -1,0 +1,60 @@
+{
+  "commit": "6c195cc9a3a685086b497d731b3c6734c34b4d22",
+  "git_status": "?? test_desktop_launcher_e2e.py",
+  "shortcut_info": {
+    "exists": true,
+    "path": "C:\\Users\\Qbits\\Desktop\\J.A.R.V.I.S.lnk",
+    "target": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\start_jarvis.bat",
+    "working_directory": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT",
+    "icon_location": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\jarvis_icon.ico,0",
+    "window_style": 7
+  },
+  "shortcut_target": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\start_jarvis.bat",
+  "working_directory": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT",
+  "launch_success": true,
+  "backend_ready": true,
+  "spatial_health_ready": true,
+  "hud_ready": true,
+  "duplicate_processes": false,
+  "clean_shutdown": true,
+  "relaunch_success": true,
+  "relaunch_cycles": [
+    {
+      "cycle": 1,
+      "launched": true,
+      "ready": true,
+      "pids": [
+        25316
+      ],
+      "stopped_cleanly": true,
+      "proc_pid": 14740,
+      "startup_time_sec": 4.0,
+      "duplicate_pids": false
+    },
+    {
+      "cycle": 2,
+      "launched": true,
+      "ready": true,
+      "pids": [
+        21084
+      ],
+      "stopped_cleanly": true,
+      "proc_pid": 2356,
+      "startup_time_sec": 2.72,
+      "duplicate_pids": false
+    },
+    {
+      "cycle": 3,
+      "launched": true,
+      "ready": true,
+      "pids": [
+        14368
+      ],
+      "stopped_cleanly": true,
+      "proc_pid": 16524,
+      "startup_time_sec": 2.7,
+      "duplicate_pids": false
+    }
+  ],
+  "errors": []
+}
