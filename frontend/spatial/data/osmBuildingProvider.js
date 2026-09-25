@@ -56,11 +56,13 @@ export class OSMBuildingProvider {
             }
 
             const req = this.requestQueue.shift();
+            if (!req) continue;
+
             try {
                 this.state.status = 'loading';
                 this.lastRequestTime = Date.now();
-                await this._fetchAndRender(req.latitude, req.longitude, req.radiusKm, req.options);
-                req.resolve();
+                const count = await this._fetchAndRender(req.latitude, req.longitude, req.radiusKm, req.options);
+                req.resolve({ ok: true, buildingCount: count, ...this.state });
             } catch (err) {
                 this.state.status = 'error';
                 if (this.eventBus) this.eventBus.emit('spatial.buildings.osm.error', { error: err.message });
@@ -72,64 +74,94 @@ export class OSMBuildingProvider {
         this.isProcessingQueue = false;
     }
 
-    async _fetchAndRender(lat, lon, radiusKm, options) {
-        if (!this.viewer) throw new Error("Viewer not attached");
+    async _fetchAndRender(lat, lon, radiusKm, options = {}) {
+        if (!this.viewer || (typeof this.viewer.isDestroyed === 'function' && this.viewer.isDestroyed())) {
+            throw new Error("Viewer not attached or destroyed");
+        }
         
-        const radiusMeters = radiusKm * 1000;
-        const query = `[out:json][timeout:25];way["building"](around:${radiusMeters},${lat},${lon});out body;>;out skel qt;`;
+        const radiusMeters = Math.min(Math.max(radiusKm * 1000, 100), 5000); // 100m to 5km bound
+        const timeoutMs = options.timeoutMs || 15000;
+        const query = `[out:json][timeout:15];way["building"](around:${radiusMeters},${lat},${lon});out body;>;out skel qt;`;
         
-        const response = await fetch('https://overpass-api.de/api/interpreter', {
-            method: 'POST',
-            body: query
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        let response;
+        try {
+            response = await fetch('https://overpass-api.de/api/interpreter', {
+                method: 'POST',
+                body: query,
+                signal: controller.signal
+            });
+        } catch (fetchErr) {
+            if (fetchErr.name === 'AbortError') {
+                throw new Error(`OSM Overpass request timed out (${timeoutMs / 1000}s limit).`);
+            }
+            throw new Error(`OSM Overpass network error: ${fetchErr.message}`);
+        } finally {
+            clearTimeout(timeoutId);
+        }
 
         if (!response.ok) {
-            throw new Error(`Overpass API error: ${response.status}`);
+            throw new Error(`Overpass API error: HTTP ${response.status}`);
         }
 
         const data = await response.json();
+        if (!data || !Array.isArray(data.elements)) {
+            data.elements = [];
+        }
         
         // Parse OSM nodes
         const nodes = new Map();
         for (const el of data.elements) {
-            if (el.type === 'node') {
+            if (el.type === 'node' && el.id !== undefined && el.lon !== undefined && el.lat !== undefined) {
                 nodes.set(el.id, { lon: el.lon, lat: el.lat });
             }
         }
 
         let newBuildingCount = 0;
 
-        for (const el of data.elements) {
-            if (el.type === 'way' && el.tags && el.tags.building) {
-                const coordinates = [];
-                for (const nodeId of el.nodes) {
-                    const node = nodes.get(nodeId);
-                    if (node) {
-                        coordinates.push(node.lon, node.lat);
-                    }
-                }
-                
-                if (coordinates.length >= 6) { // At least 3 points
-                    let height = 10;
-                    if (el.tags['building:levels']) {
-                        height = Math.max(3, parseInt(el.tags['building:levels']) * 3);
-                    } else if (el.tags.height) {
-                        height = parseFloat(el.tags.height) || 10;
+        if (this.viewer && !this.viewer.isDestroyed()) {
+            for (const el of data.elements) {
+                if (this.viewer.isDestroyed()) break;
+
+                if (el.type === 'way' && el.tags && el.tags.building && Array.isArray(el.nodes)) {
+                    const coordinates = [];
+                    for (const nodeId of el.nodes) {
+                        const node = nodes.get(nodeId);
+                        if (node) {
+                            coordinates.push(node.lon, node.lat);
+                        }
                     }
                     
-                    const entity = this.viewer.entities.add({
-                        polygon: {
-                            hierarchy: window.Cesium.Cartesian3.fromDegreesArray(coordinates),
-                            extrudedHeight: height,
-                            material: window.Cesium.Color.fromCssColorString('#00e5ff').withAlpha(0.2),
-                            outline: true,
-                            outlineColor: window.Cesium.Color.CYAN,
-                            height: 0
-                        },
-                        description: 'OSM Building'
-                    });
-                    this.entities.push(entity);
-                    newBuildingCount++;
+                    if (coordinates.length >= 6) { // At least 3 points
+                        let height = 10;
+                        if (el.tags['building:levels']) {
+                            const lvls = parseInt(el.tags['building:levels'], 10);
+                            height = Number.isFinite(lvls) ? Math.max(3, lvls * 3) : 10;
+                        } else if (el.tags.height) {
+                            const parsedH = parseFloat(el.tags.height);
+                            height = Number.isFinite(parsedH) ? Math.max(3, parsedH) : 10;
+                        }
+                        
+                        try {
+                            const entity = this.viewer.entities.add({
+                                polygon: {
+                                    hierarchy: window.Cesium.Cartesian3.fromDegreesArray(coordinates),
+                                    extrudedHeight: height,
+                                    material: window.Cesium.Color.fromCssColorString('#00e5ff').withAlpha(0.2),
+                                    outline: true,
+                                    outlineColor: window.Cesium.Color.CYAN,
+                                    height: 0
+                                },
+                                description: 'OSM Building'
+                            });
+                            this.entities.push(entity);
+                            newBuildingCount++;
+                        } catch (addErr) {
+                            // Non-fatal if a single polygon has invalid topology
+                        }
+                    }
                 }
             }
         }
@@ -143,6 +175,8 @@ export class OSMBuildingProvider {
         if (this.eventBus) {
             this.eventBus.emit('spatial.buildings.osm.loaded', this.state);
         }
+
+        return newBuildingCount;
     }
 
     getState() {
@@ -150,9 +184,12 @@ export class OSMBuildingProvider {
     }
 
     clear() {
-        if (!this.viewer) return;
-        for (const entity of this.entities) {
-            this.viewer.entities.remove(entity);
+        if (this.viewer && !this.viewer.isDestroyed()) {
+            for (const entity of this.entities) {
+                try {
+                    this.viewer.entities.remove(entity);
+                } catch (_) {}
+            }
         }
         this.entities = [];
         this.state.isLoaded = false;
@@ -162,8 +199,14 @@ export class OSMBuildingProvider {
     }
 
     destroy() {
-        this.clear();
+        // Cancel all pending queue requests
+        for (const req of this.requestQueue) {
+            try {
+                req.reject(new Error("OSMBuildingProvider destroyed"));
+            } catch (_) {}
+        }
         this.requestQueue = [];
+        this.clear();
         this.viewer = null;
         this.eventBus = null;
     }

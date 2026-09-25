@@ -122,29 +122,81 @@ export class GeoJsonDataLayer {
     }
 
     _validateGeoJSON(geojson) {
-        if (!geojson || (geojson.type !== 'FeatureCollection' && geojson.type !== 'Feature')) {
-            throw new Error("Invalid GeoJSON type. Must be FeatureCollection or Feature.");
+        if (!geojson || typeof geojson !== 'object') {
+            throw new Error("Invalid GeoJSON: input must be a valid JSON object.");
+        }
+        if (geojson.type !== 'FeatureCollection' && geojson.type !== 'Feature' && !this._isValidGeometryType(geojson.type)) {
+            throw new Error("Invalid GeoJSON type. Must be FeatureCollection, Feature, or Geometry.");
         }
         
-        const features = geojson.type === 'FeatureCollection' ? geojson.features : [geojson];
-        if (!Array.isArray(features)) {
-            throw new Error("FeatureCollection must have a features array.");
-        }
-        
-        for (const feature of features) {
-            if (!feature.geometry || !feature.geometry.type || !feature.geometry.coordinates) {
-                throw new Error("Invalid Feature: missing geometry or coordinates.");
+        if (geojson.type === 'FeatureCollection') {
+            if (!Array.isArray(geojson.features)) {
+                throw new Error("FeatureCollection must have a features array.");
             }
-            this._validateCoordinates(feature.geometry.coordinates);
+            for (const feature of geojson.features) {
+                this._validateFeature(feature);
+            }
+        } else if (geojson.type === 'Feature') {
+            this._validateFeature(geojson);
+        } else {
+            // Standalone Geometry
+            this._validateGeometry(geojson);
         }
     }
 
+    _validateFeature(feature) {
+        if (!feature || typeof feature !== 'object') {
+            throw new Error("Invalid Feature: must be an object.");
+        }
+        // GeoJSON spec allows null geometry for unlocated features
+        if (feature.geometry === null) return;
+        if (!feature.geometry || typeof feature.geometry !== 'object') {
+            throw new Error("Invalid Feature: missing geometry object.");
+        }
+        this._validateGeometry(feature.geometry);
+    }
+
+    _isValidGeometryType(type) {
+        return ['Point', 'MultiPoint', 'LineString', 'MultiLineString', 'Polygon', 'MultiPolygon', 'GeometryCollection'].includes(type);
+    }
+
+    _validateGeometry(geom) {
+        if (!geom.type || !this._isValidGeometryType(geom.type)) {
+            throw new Error(`Invalid Geometry type: ${geom.type}`);
+        }
+        if (geom.type === 'GeometryCollection') {
+            if (!Array.isArray(geom.geometries)) {
+                throw new Error("GeometryCollection must have a geometries array.");
+            }
+            for (const subGeom of geom.geometries) {
+                this._validateGeometry(subGeom);
+            }
+            return;
+        }
+        if (!geom.coordinates || !Array.isArray(geom.coordinates)) {
+            throw new Error(`Invalid Geometry: missing coordinates array for type ${geom.type}.`);
+        }
+        this._validateCoordinates(geom.coordinates);
+    }
+
     _validateCoordinates(coords) {
+        if (!Array.isArray(coords)) {
+            throw new Error("Coordinates must be an array.");
+        }
+        if (coords.length === 0) return;
+
         if (typeof coords[0] === 'number') {
-            const [lon, lat] = coords;
-            if (lat < -90 || lat > 90) throw new Error(`Invalid latitude: ${lat}`);
-            if (lon < -180 || lon > 180) throw new Error(`Invalid longitude: ${lon}`);
-        } else if (Array.isArray(coords)) {
+            const [lon, lat, alt] = coords;
+            if (typeof lat !== 'number' || isNaN(lat) || lat < -90 || lat > 90) {
+                throw new Error(`Invalid latitude: ${lat}. Must be between -90 and 90.`);
+            }
+            if (typeof lon !== 'number' || isNaN(lon) || lon < -180 || lon > 180) {
+                throw new Error(`Invalid longitude: ${lon}. Must be between -180 and 180.`);
+            }
+            if (alt !== undefined && (typeof alt !== 'number' || isNaN(alt))) {
+                throw new Error(`Invalid altitude: ${alt}. Must be a valid number.`);
+            }
+        } else if (Array.isArray(coords[0])) {
             for (const c of coords) {
                 this._validateCoordinates(c);
             }
@@ -157,8 +209,10 @@ export class GeoJsonDataLayer {
      */
     remove(dataSourceId) {
         const item = this.dataSources.get(dataSourceId);
-        if (item && this.viewer) {
-            this.viewer.dataSources.remove(item.dataSource);
+        if (item && this.viewer && !this.viewer.isDestroyed()) {
+            try {
+                this.viewer.dataSources.remove(item.dataSource);
+            } catch (_) {}
             this.dataSources.delete(dataSourceId);
             if (this.eventBus) {
                 this.eventBus.emit('spatial.geojson.removed', { id: dataSourceId });
@@ -170,9 +224,14 @@ export class GeoJsonDataLayer {
      * Clear all data sources
      */
     clear() {
-        if (!this.viewer) return;
+        if (!this.viewer || (typeof this.viewer.isDestroyed === 'function' && this.viewer.isDestroyed())) {
+            this.dataSources.clear();
+            return;
+        }
         for (const [id, item] of this.dataSources.entries()) {
-            this.viewer.dataSources.remove(item.dataSource);
+            try {
+                this.viewer.dataSources.remove(item.dataSource);
+            } catch (_) {}
             if (this.eventBus) {
                 this.eventBus.emit('spatial.geojson.removed', { id });
             }

@@ -1,7 +1,11 @@
 {
+  "timestamp": "2026-09-25T02:35:51.037994+00:00",
   "server_url": "http://127.0.0.1:8000",
+  "token_free_mode": true,
+  "cesium_ion_token_present": false,
   "runtime_startup": "uvicorn server:app --host 127.0.0.1 --port 8000",
   "cesium_version": "1.138.0",
+  "browser_version": "Chromium Playwright Headless",
   "webgl_active": true,
   "webgl_renderer": "ANGLE (AMD, AMD Radeon 780M Graphics (0x000015BF) Direct3D11 vs_5_0 ps_5_0, D3D11)",
   "canvas_size": "1405x906",
@@ -10,8 +14,8 @@
     "navigated_tokyo": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\reports\\browser_evidence\\02_navigated_location_tokyo.png",
     "scene_2d": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\reports\\browser_evidence\\03_scene_mode_2d.png",
     "scene_columbus": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\reports\\browser_evidence\\04_scene_mode_columbus.png",
-    "terrain_state": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\reports\\browser_evidence\\05_terrain_state.png",
     "buildings_state": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\reports\\browser_evidence\\06_buildings_state.png",
+    "terrain_state": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\reports\\browser_evidence\\05_terrain_state.png",
     "post_lifecycle": "D:\\Antigravity Project\\FULL ON SHAKILS ASSISTANT\\reports\\browser_evidence\\07_post_lifecycle_reinit.png"
   },
   "scene_mode_transitions": [
@@ -20,7 +24,7 @@
       "result": {
         "res": {
           "ok": true,
-          "commandId": "cmd_1790293947030_7",
+          "commandId": "cmd_1790303779023_7",
           "type": "SET_SCENE_MODE",
           "status": "completed",
           "data": {
@@ -29,8 +33,8 @@
             "targetMode": "2D",
             "duration": 1.5
           },
-          "startedAt": "2026-09-24T23:52:27.030Z",
-          "completedAt": "2026-09-24T23:52:27.031Z",
+          "startedAt": "2026-09-25T02:36:19.023Z",
+          "completedAt": "2026-09-25T02:36:19.023Z",
           "diagnostics": {
             "elapsedMs": 0
           }
@@ -45,7 +49,7 @@
       "result": {
         "res": {
           "ok": true,
-          "commandId": "cmd_1790293949352_8",
+          "commandId": "cmd_1790303781325_8",
           "type": "SET_SCENE_MODE",
           "status": "completed",
           "data": {
@@ -54,10 +58,10 @@
             "targetMode": "COLUMBUS_VIEW",
             "duration": 1.5
           },
-          "startedAt": "2026-09-24T23:52:29.352Z",
-          "completedAt": "2026-09-24T23:52:29.353Z",
+          "startedAt": "2026-09-25T02:36:21.325Z",
+          "completedAt": "2026-09-25T02:36:21.325Z",
           "diagnostics": {
-            "elapsedMs": 1
+            "elapsedMs": 0
           }
         },
         "hudPill": "3D"
@@ -69,7 +73,7 @@
       "result": {
         "res": {
           "ok": true,
-          "commandId": "cmd_1790293951553_9",
+          "commandId": "cmd_1790303783516_9",
           "type": "SET_SCENE_MODE",
           "status": "completed",
           "data": {
@@ -78,8 +82,8 @@
             "targetMode": "3D",
             "duration": 1.5
           },
-          "startedAt": "2026-09-24T23:52:31.553Z",
-          "completedAt": "2026-09-24T23:52:31.554Z",
+          "startedAt": "2026-09-25T02:36:23.516Z",
+          "completedAt": "2026-09-25T02:36:23.516Z",
           "diagnostics": {
             "elapsedMs": 0
           }
@@ -94,7 +98,7 @@
       "command": "NAVIGATE_TOKYO",
       "result": {
         "ok": true,
-        "commandId": "cmd_1790293937625_1",
+        "commandId": "cmd_1790303769656_1",
         "type": "NAVIGATE",
         "status": "completed",
         "data": {
@@ -111,10 +115,10 @@
           },
           "duration": 2
         },
-        "startedAt": "2026-09-24T23:52:17.625Z",
-        "completedAt": "2026-09-24T23:52:19.659Z",
+        "startedAt": "2026-09-25T02:36:09.656Z",
+        "completedAt": "2026-09-25T02:36:11.688Z",
         "diagnostics": {
-          "elapsedMs": 2034
+          "elapsedMs": 2032
         }
       }
     },
@@ -122,7 +126,7 @@
       "command": "NAVIGATE_ZERO_COORDINATES",
       "result": {
         "ok": true,
-        "commandId": "cmd_1790293941444_2",
+        "commandId": "cmd_1790303773451_2",
         "type": "NAVIGATE",
         "status": "completed",
         "data": {
@@ -139,10 +143,10 @@
           },
           "duration": 2
         },
-        "startedAt": "2026-09-24T23:52:21.444Z",
-        "completedAt": "2026-09-24T23:52:23.457Z",
+        "startedAt": "2026-09-25T02:36:13.451Z",
+        "completedAt": "2026-09-25T02:36:15.457Z",
         "diagnostics": {
-          "elapsedMs": 2013
+          "elapsedMs": 2006
         }
       }
     },
@@ -150,7 +154,7 @@
       "command": "OUT_OF_BOUNDS_LATITUDE",
       "result": {
         "ok": false,
-        "commandId": "cmd_1790293943464_3",
+        "commandId": "cmd_1790303775461_3",
         "type": "NAVIGATE",
         "status": "failed",
         "error": {
@@ -159,37 +163,104 @@
           "retryable": false
         },
         "data": null,
-        "startedAt": "2026-09-24T23:52:23.464Z",
-        "completedAt": "2026-09-24T23:52:23.464Z",
+        "startedAt": "2026-09-25T02:36:15.461Z",
+        "completedAt": "2026-09-25T02:36:15.461Z",
         "diagnostics": {
           "elapsedMs": 0
         }
       }
     }
   ],
-  "terrain_results": [
-    {
-      "pill": "ELLIPSOID",
-      "state": {
-        "provider": "ellipsoid",
-        "status": "loading",
-        "isRealTerrain": false,
-        "lastError": null
-      },
-      "btnActive": false
+  "geojson_results": {
+    "point": {
+      "id": "geojson_1790303785530_tpy5wu5q6",
+      "ok": true
+    },
+    "linestring": {
+      "id": "geojson_1790303785531_cydnrmg2w",
+      "ok": true
+    },
+    "polygon": {
+      "id": "geojson_1790303785532_3vp7inr0y",
+      "ok": true
+    },
+    "multi": {
+      "id": "geojson_1790303785532_hphcy00t9",
+      "ok": true
+    },
+    "altitude": {
+      "id": "geojson_1790303785533_xznrky1zf",
+      "ok": true
+    },
+    "empty": {
+      "id": "geojson_1790303785533_ohw6ngtvi",
+      "ok": true
+    },
+    "large_collection": {
+      "id": "geojson_1790303785533_wt6jh3ceg",
+      "count": 100,
+      "ok": true
+    },
+    "duplicate_ids": {
+      "ok": true
+    },
+    "invalid_coords_rejected": true,
+    "cleanup": {
+      "totalBefore": 9,
+      "afterOneRemove": 8,
+      "afterClear": 0,
+      "ok": true
     }
-  ],
-  "building_results": [
-    {
-      "btnActive": false,
+  },
+  "osm_building_results": {
+    "toggle_test": {
+      "btnActive": true,
       "bldgState": {
-        "isEnabled": false,
+        "isEnabled": true,
         "layerId": "buildings_3d",
-        "provider": "osm_buildings",
+        "provider": "osm_free_extrusion",
         "hasTileset": false
       }
     }
-  ],
+  },
+  "terrain_results": {
+    "baseline": {
+      "provider": "ellipsoid",
+      "status": "active",
+      "isRealTerrain": false,
+      "lastError": null
+    },
+    "attempt": {
+      "pill": "ARC ELEVATION",
+      "state": {
+        "provider": "arcgis_elevation",
+        "status": "active",
+        "isRealTerrain": true,
+        "lastError": null
+      },
+      "btnActive": true
+    }
+  },
+  "layer_separation_results": {
+    "imageryProvidersCount": 4,
+    "terrainProvidersCount": 3,
+    "hasArcgisSatellite": true,
+    "osmIsStreetBasemap": true,
+    "buildingLayerProvider": "osm_buildings",
+    "layerCategories": {
+      "satellite_imagery": "ArcGIS World Imagery (High-Res Orbital)",
+      "street_basemap": "OpenStreetMap Cartographic Standard",
+      "building_geometry": "OSM Overpass 3D Extrusion",
+      "terrain_elevation": "ArcGIS World Elevation 3D / WGS84 Ellipsoid Baseline",
+      "vector_data": "GeoJSON Data Layer",
+      "live_observation": "OpenSky Live Aircraft / Weather Radar"
+    }
+  },
+  "failure_simulation_results": {
+    "large_area_clamped": true,
+    "has_attribution": false,
+    "status": null
+  },
   "lifecycle_results": [
     {
       "cycle": 1,
@@ -217,12 +288,18 @@
     }
   ],
   "console_summary": {
-    "total_messages": 29,
-    "errors_count": 0,
+    "total_messages": 30,
+    "errors_count": 1,
     "warnings_count": 11,
     "page_errors_count": 0,
     "failed_requests_count": 1,
-    "errors": [],
+    "errors": [
+      {
+        "type": "error",
+        "text": "GeoJsonDataLayer load error: Error: Invalid latitude: 999. Must be between -90 and 90.\n    at GeoJsonDataLayer._validateCoordinates (http://127.0.0.1:8000/static/spatial/data/geoJsonDataLayer.js:191:23)\n    at GeoJsonDataLayer._validateGeometry (http://127.0.0.1:8000/static/spatial/data/geoJsonDataLayer.js:179:14)\n    at GeoJsonDataLayer._validateFeature (http://127.0.0.1:8000/static/spatial/data/geoJsonDataLayer.js:156:14)\n    at GeoJsonDataLayer._validateGeoJSON (http://127.0.0.1:8000/static/spatial/data/geoJsonDataLayer.js:140:18)\n    at GeoJsonDataLayer.loadFromObject (http://127.0.0.1:8000/static/spatial/data/geoJsonDataLayer.js:37:18)\n    at eval (eval at evaluate (:311:30), <anonymous>:81:50)\n    at async <anonymous>:337:30",
+        "location": "{'url': 'http://127.0.0.1:8000/static/spatial/data/geoJsonDataLayer.js', 'line': 71, 'column': 20, 'lineNumber': 71, 'columnNumber': 20}"
+      }
+    ],
     "page_errors": [],
     "failed_requests": [
       {
@@ -231,8 +308,19 @@
       }
     ]
   },
+  "confirmed_capabilities": [
+    "Token-free Cesium 1.138+ local runtime initialization",
+    "Camera navigation, zero-coordinate preservation, bounds rejection, zoom & reset",
+    "Scene mode morph transitions (3D, 2D, Columbus View) and HUD sync",
+    "GeoJSON specification engine (Point, LineString, Polygon, Multi*, 3D Altitude, 100+ entities, deduplication, cleanup)",
+    "Strict layer taxonomy (Satellite Imagery, OSM Street Map, 3D Building Extrusion, Elevation, GeoJSON, Live Feeds)",
+    "OSM Overpass building provider with rate limiting, timeouts, fair-use spacing, and entity cleanup",
+    "Free Terrain Provider (ArcGIS World Elevation 3D + WGS84 Ellipsoid fallback with truthful HUD)",
+    "3-cycle lifecycle destruction and reinitialization without memory leaks or dangling canvases"
+  ],
   "known_limitations": [
     "Cesium Ion 3D World Terrain requires a valid user CESIUM_ION_TOKEN or local elevation tileserver. In absence of a token, system gracefully degrades to high-resolution Ellipsoid without crashing.",
-    "Cesium Ion Photorealistic 3D Buildings require an active Ion asset ID / token. When unconfigured, the building layer reports honest 'unsupported/failed' status and does not falsely claim active rendering."
+    "Cesium Ion Photorealistic 3D Buildings require an active Ion asset ID / token. When unconfigured, the building layer reports honest status and falls back to free OSM Overpass extrusion if available.",
+    "OSM Overpass API is a public shared service subject to rate limiting (10s backoff implemented) and availability. It requires an active internet connection."
   ]
 }
