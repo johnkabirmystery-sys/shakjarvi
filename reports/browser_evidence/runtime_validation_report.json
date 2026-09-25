@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-09-25T02:35:51.037994+00:00",
+  "timestamp": "2026-09-25T02:55:36.723071+00:00",
   "server_url": "http://127.0.0.1:8000",
   "token_free_mode": true,
   "cesium_ion_token_present": false,
@@ -24,7 +24,7 @@
       "result": {
         "res": {
           "ok": true,
-          "commandId": "cmd_1790303779023_7",
+          "commandId": "cmd_1790304963090_7",
           "type": "SET_SCENE_MODE",
           "status": "completed",
           "data": {
@@ -33,10 +33,10 @@
             "targetMode": "2D",
             "duration": 1.5
           },
-          "startedAt": "2026-09-25T02:36:19.023Z",
-          "completedAt": "2026-09-25T02:36:19.023Z",
+          "startedAt": "2026-09-25T02:56:03.090Z",
+          "completedAt": "2026-09-25T02:56:03.091Z",
           "diagnostics": {
-            "elapsedMs": 0
+            "elapsedMs": 1
           }
         },
         "hudPill": "3D",
@@ -49,7 +49,7 @@
       "result": {
         "res": {
           "ok": true,
-          "commandId": "cmd_1790303781325_8",
+          "commandId": "cmd_1790304965423_8",
           "type": "SET_SCENE_MODE",
           "status": "completed",
           "data": {
@@ -58,10 +58,10 @@
             "targetMode": "COLUMBUS_VIEW",
             "duration": 1.5
           },
-          "startedAt": "2026-09-25T02:36:21.325Z",
-          "completedAt": "2026-09-25T02:36:21.325Z",
+          "startedAt": "2026-09-25T02:56:05.423Z",
+          "completedAt": "2026-09-25T02:56:05.424Z",
           "diagnostics": {
-            "elapsedMs": 0
+            "elapsedMs": 1
           }
         },
         "hudPill": "3D"
@@ -73,7 +73,7 @@
       "result": {
         "res": {
           "ok": true,
-          "commandId": "cmd_1790303783516_9",
+          "commandId": "cmd_1790304967656_9",
           "type": "SET_SCENE_MODE",
           "status": "completed",
           "data": {
@@ -82,10 +82,10 @@
             "targetMode": "3D",
             "duration": 1.5
           },
-          "startedAt": "2026-09-25T02:36:23.516Z",
-          "completedAt": "2026-09-25T02:36:23.516Z",
+          "startedAt": "2026-09-25T02:56:07.655Z",
+          "completedAt": "2026-09-25T02:56:07.656Z",
           "diagnostics": {
-            "elapsedMs": 0
+            "elapsedMs": 1
           }
         },
         "hudPill": "3D"
@@ -98,7 +98,7 @@
       "command": "NAVIGATE_TOKYO",
       "result": {
         "ok": true,
-        "commandId": "cmd_1790303769656_1",
+        "commandId": "cmd_1790304953511_1",
         "type": "NAVIGATE",
         "status": "completed",
         "data": {
@@ -115,10 +115,10 @@
           },
           "duration": 2
         },
-        "startedAt": "2026-09-25T02:36:09.656Z",
-        "completedAt": "2026-09-25T02:36:11.688Z",
+        "startedAt": "2026-09-25T02:55:53.511Z",
+        "completedAt": "2026-09-25T02:55:55.539Z",
         "diagnostics": {
-          "elapsedMs": 2032
+          "elapsedMs": 2029
         }
       }
     },
@@ -126,7 +126,7 @@
       "command": "NAVIGATE_ZERO_COORDINATES",
       "result": {
         "ok": true,
-        "commandId": "cmd_1790303773451_2",
+        "commandId": "cmd_1790304957433_2",
         "type": "NAVIGATE",
         "status": "completed",
         "data": {
@@ -143,10 +143,10 @@
           },
           "duration": 2
         },
-        "startedAt": "2026-09-25T02:36:13.451Z",
-        "completedAt": "2026-09-25T02:36:15.457Z",
+        "startedAt": "2026-09-25T02:55:57.433Z",
+        "completedAt": "2026-09-25T02:55:59.492Z",
         "diagnostics": {
-          "elapsedMs": 2006
+          "elapsedMs": 2059
         }
       }
     },
@@ -154,7 +154,7 @@
       "command": "OUT_OF_BOUNDS_LATITUDE",
       "result": {
         "ok": false,
-        "commandId": "cmd_1790303775461_3",
+        "commandId": "cmd_1790304959499_3",
         "type": "NAVIGATE",
         "status": "failed",
         "error": {
@@ -163,8 +163,8 @@
           "retryable": false
         },
         "data": null,
-        "startedAt": "2026-09-25T02:36:15.461Z",
-        "completedAt": "2026-09-25T02:36:15.461Z",
+        "startedAt": "2026-09-25T02:55:59.499Z",
+        "completedAt": "2026-09-25T02:55:59.499Z",
         "diagnostics": {
           "elapsedMs": 0
         }
@@ -173,31 +173,31 @@
   ],
   "geojson_results": {
     "point": {
-      "id": "geojson_1790303785530_tpy5wu5q6",
+      "id": "geojson_1790304969678_zrhjhladj",
       "ok": true
     },
     "linestring": {
-      "id": "geojson_1790303785531_cydnrmg2w",
+      "id": "geojson_1790304969679_jdmwde0ae",
       "ok": true
     },
     "polygon": {
-      "id": "geojson_1790303785532_3vp7inr0y",
+      "id": "geojson_1790304969680_x7k18e7th",
       "ok": true
     },
     "multi": {
-      "id": "geojson_1790303785532_hphcy00t9",
+      "id": "geojson_1790304969680_l2t4dfsvd",
       "ok": true
     },
     "altitude": {
-      "id": "geojson_1790303785533_xznrky1zf",
+      "id": "geojson_1790304969680_8loy34eab",
       "ok": true
     },
     "empty": {
-      "id": "geojson_1790303785533_ohw6ngtvi",
+      "id": "geojson_1790304969681_99ljxm3zo",
       "ok": true
     },
     "large_collection": {
-      "id": "geojson_1790303785533_wt6jh3ceg",
+      "id": "geojson_1790304969681_lz8mfrc90",
       "count": 100,
       "ok": true
     },
@@ -214,11 +214,11 @@
   },
   "osm_building_results": {
     "toggle_test": {
-      "btnActive": true,
+      "btnActive": false,
       "bldgState": {
-        "isEnabled": true,
+        "isEnabled": false,
         "layerId": "buildings_3d",
-        "provider": "osm_free_extrusion",
+        "provider": "osm_buildings",
         "hasTileset": false
       }
     }
